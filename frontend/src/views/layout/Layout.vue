@@ -44,6 +44,7 @@
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item command="bigscreen">数据可视化大屏</el-dropdown-item>
+                <el-dropdown-item command="profile">个人资料</el-dropdown-item>
                 <el-dropdown-item command="password">修改密码</el-dropdown-item>
                 <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
               </el-dropdown-menu>
@@ -58,6 +59,28 @@
       </el-main>
     </el-container>
   </el-container>
+
+  <!-- 个人资料弹窗 -->
+  <el-dialog v-model="profileVisible" title="个人资料" width="420px">
+    <el-form :model="profileForm" label-width="80px">
+      <el-form-item label="用户名">
+        <el-input :model-value="auth.user.username" disabled />
+      </el-form-item>
+      <el-form-item label="姓名">
+        <el-input v-model="profileForm.real_name" />
+      </el-form-item>
+      <el-form-item label="手机号">
+        <el-input v-model="profileForm.phone" />
+      </el-form-item>
+      <el-form-item label="邮箱">
+        <el-input v-model="profileForm.email" />
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="profileVisible = false">取消</el-button>
+      <el-button type="primary" @click="doSaveProfile">保存</el-button>
+    </template>
+  </el-dialog>
 
   <!-- 修改密码弹窗 -->
   <el-dialog v-model="pwdVisible" title="修改密码" width="420px">
@@ -82,7 +105,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { UserFilled, ArrowDown, Van } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
-import { changePassword } from '@/api/auth'
+import { changePassword, updateProfile, fetchProfile } from '@/api/auth'
 
 const route = useRoute()
 const router = useRouter()
@@ -92,14 +115,31 @@ const collapsed = ref(false)
 const roleName = computed(() => ({ admin: '管理员', officer: '交警/运营', user: '普通用户' })[auth.role] ?? auth.role)
 const roleTagType = computed(() => ({ admin: 'danger', officer: 'warning', user: 'success' })[auth.role] ?? 'info') as never
 
-function onCommand(cmd: string) {
+async function onCommand(cmd: string) {
   if (cmd === 'logout') {
     auth.logout().then(() => router.push('/login'))
   } else if (cmd === 'bigscreen') {
     router.push('/big-screen')
   } else if (cmd === 'password') {
     pwdVisible.value = true
+  } else if (cmd === 'profile') {
+    const { data } = await fetchProfile()
+    Object.assign(profileForm, { real_name: data.real_name, phone: data.phone, email: data.email })
+    profileVisible.value = true
   }
+}
+
+// ---- 个人资料 ----
+const profileVisible = ref(false)
+const profileForm = reactive({ real_name: '', phone: '', email: '' })
+
+async function doSaveProfile() {
+  const { data } = await updateProfile(profileForm)
+  ElMessage.success('资料已更新')
+  profileVisible.value = false
+  // 同步本地用户显示名
+  auth.user.real_name = data.real_name
+  localStorage.setItem('st_user', JSON.stringify({ ...auth.user }))
 }
 
 // ---- 修改密码 ----

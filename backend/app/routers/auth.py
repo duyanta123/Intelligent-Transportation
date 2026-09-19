@@ -26,7 +26,7 @@ from app.core.response import (
 )
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models import User
-from app.schemas import LoginIn, PasswordIn, RegisterIn
+from app.schemas import LoginIn, PasswordIn, ProfileUpdateIn, RegisterIn
 from app.services.auth_service import get_user_menus, get_user_role_code
 from app.services.oplog import log_op
 from app.utils.captcha import generate_captcha
@@ -184,4 +184,30 @@ def profile(current_user: User = Depends(get_current_user), db: Session = Depend
             "role": role,
             "menus": get_user_menus(db, current_user),
         }
+    )
+
+
+@router.put("/profile")
+def update_profile(
+    body: ProfileUpdateIn,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """自助修改个人资料（姓名/手机/邮箱），所有登录角色可用"""
+    for field in ("real_name", "phone", "email"):
+        value = getattr(body, field)
+        if value is not None:
+            setattr(current_user, field, value)
+    log_op(db, request, current_user, "修改", f"用户 {current_user.username} 更新了个人资料")
+    db.commit()
+    return ok(
+        {
+            "id": current_user.id,
+            "username": current_user.username,
+            "real_name": current_user.real_name,
+            "phone": current_user.phone,
+            "email": current_user.email,
+        },
+        "资料已更新",
     )

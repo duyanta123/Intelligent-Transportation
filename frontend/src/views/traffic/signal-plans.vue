@@ -1,6 +1,33 @@
 <template>
   <div class="page">
-    <el-row :gutter="14">
+    <!-- 信号灯实时状态（10 秒轮询） -->
+    <el-card shadow="never" class="status-card">
+      <template #header>
+        <div class="card-header">
+          <span>信号灯实时状态（每 10 秒刷新）</span>
+          <el-tag size="small" type="info">轮询中</el-tag>
+        </div>
+      </template>
+      <el-row :gutter="12">
+        <el-col v-for="s in signalStatus" :key="s.intersection_id" :xs="12" :sm="8" :md="6" :lg="6" style="margin-bottom: 10px">
+          <div class="status-item" :class="{ dim: s.remaining_seconds <= 5 }">
+            <div class="status-name">{{ s.intersection_name }}</div>
+            <div class="status-phase">
+              <span class="dot" :class="s.remaining_seconds <= 5 ? 'red' : 'green'" />
+              {{ s.current_phase }}
+            </div>
+            <div class="status-meta">
+              <span>剩余 {{ s.remaining_seconds }}s / 周期 {{ s.cycle_seconds }}s</span>
+              <el-tag size="small" :type="s.mode === 'adaptive' ? 'warning' : 'primary'" effect="plain">
+                {{ s.mode === 'adaptive' ? '感应' : '定周期' }}
+              </el-tag>
+            </div>
+          </div>
+        </el-col>
+      </el-row>
+    </el-card>
+
+    <el-row :gutter="14" style="margin-top: 14px">
       <!-- Webster 配时计算器 -->
       <el-col :span="10">
         <el-card shadow="never">
@@ -114,11 +141,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { Plus, Delete, CircleCheckFilled } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { fetchIntersections, fetchSignalPlans, createSignalPlan, deleteSignalPlan, calcWebster } from '@/api/traffic'
+import { fetchIntersections, fetchSignalPlans, createSignalPlan, deleteSignalPlan, calcWebster, fetchSignalStatus } from '@/api/traffic'
 import type { Intersection, SignalPlan } from '@/api/traffic'
 import { websterCalc } from '@/utils/algorithms'
 import { useAuthStore } from '@/stores/auth'
@@ -259,6 +286,15 @@ async function remove(row: SignalPlan) {
   await loadPlans()
 }
 
+// ---- 信号灯实时状态轮询 ----
+const signalStatus = ref<Record<string, unknown>[]>([])
+let statusTimer: number | null = null
+
+async function loadStatus() {
+  const { data } = await fetchSignalStatus()
+  signalStatus.value = data
+}
+
 onMounted(async () => {
   const { data } = await fetchIntersections()
   intersections.value = data
@@ -266,11 +302,61 @@ onMounted(async () => {
   if (preset) {
     filterId.value = Number(preset)
   }
-  await loadPlans()
+  await Promise.all([loadPlans(), loadStatus()])
+  statusTimer = window.setInterval(loadStatus, 10000)
+})
+
+onBeforeUnmount(() => {
+  if (statusTimer) window.clearInterval(statusTimer)
 })
 </script>
 
 <style scoped>
+.status-card :deep(.el-card__body) {
+  padding-bottom: 4px;
+}
+.status-item {
+  border: 1px solid #e4e9f0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  transition: opacity 0.2s;
+}
+.status-item.dim {
+  opacity: 0.65;
+}
+.status-name {
+  font-weight: 600;
+  color: #304156;
+}
+.status-phase {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0;
+  color: #1f6fb2;
+  font-size: 14px;
+}
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.dot.green {
+  background: #67c23a;
+  box-shadow: 0 0 6px rgba(103, 194, 58, 0.7);
+}
+.dot.red {
+  background: #f56c6c;
+  box-shadow: 0 0 6px rgba(245, 108, 108, 0.7);
+}
+.status-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #8492a6;
+  font-size: 12px;
+}
 .card-header {
   display: flex;
   justify-content: space-between;

@@ -10,6 +10,8 @@ export const register = (data: { username: string; password: string; real_name?:
 export const logout = () => http.post<never, ApiResponse<null>>('/auth/logout')
 export const changePassword = (data: { old_password: string; new_password: string }) =>
   http.put<never, ApiResponse<null>>('/auth/password', data)
+export const updateProfile = (data: { real_name?: string; phone?: string; email?: string }) =>
+  http.put<never, ApiResponse<UserInfo>>('/auth/profile', data)
 export const fetchProfile = () =>
   http.get<never, ApiResponse<UserInfo & { role: string; menus: MenuItem[] }>>('/auth/profile')
 

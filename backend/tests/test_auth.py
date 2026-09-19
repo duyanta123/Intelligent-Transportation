@@ -123,3 +123,18 @@ def test_login_lockout_after_5_failures(client):
         redis = get_redis()
         for k in redis.keys("login:lock:*") + redis.keys("login:fail:*"):
             redis.delete(k)
+
+
+def test_update_profile_self_service(client, admin_headers):
+    """自助资料修改：所有角色可改自己的姓名/手机/邮箱"""
+    resp = client.put(
+        "/api/v1/auth/profile",
+        headers=admin_headers,
+        json={"real_name": "新名字", "phone": "13900009999", "email": "me@traffic.local"},
+    )
+    body = resp.json()
+    assert body["code"] == 0, body
+    assert body["data"]["real_name"] == "新名字"
+    # profile 回读一致
+    prof = client.get("/api/v1/auth/profile", headers=admin_headers).json()["data"]
+    assert prof["real_name"] == "新名字" and prof["email"] == "me@traffic.local"

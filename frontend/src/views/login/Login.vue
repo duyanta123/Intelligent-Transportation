@@ -59,7 +59,8 @@ const auth = useAuthStore()
 
 const formRef = ref<FormInstance>()
 const loading = ref(false)
-const form = reactive({ username: '', password: '', captcha_key: '', captcha_code: '' })
+const form = reactive({ username: localStorage.getItem('st_username') ?? '', password: '', captcha_key: '', captcha_code: '' })
+const remember = ref(localStorage.getItem('st_username') !== null)
 
 const captcha = ref({ key: '', image: '' })
 
@@ -80,6 +81,8 @@ async function submit() {
   await formRef.value?.validate()
   loading.value = true
   try {
+    if (remember.value) localStorage.setItem('st_username', form.username)
+    else localStorage.removeItem('st_username')
     await auth.login({ ...form })
     ElMessage.success('登录成功')
     const redirect = (route.query.redirect as string) || '/'
@@ -165,6 +168,9 @@ onMounted(refreshCaptcha)
 .login-btn {
   width: 100%;
   margin: 6px 0 0;
+}
+.remember-row {
+  margin: 2px 0 2px;
 }
 .tips {
   margin-top: 14px;

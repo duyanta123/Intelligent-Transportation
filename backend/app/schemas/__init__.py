@@ -19,6 +19,12 @@ class LoginIn(BaseModel):
     captcha_code: str
 
 
+class ProfileUpdateIn(BaseModel):
+    real_name: str | None = Field(default=None, max_length=64)
+    phone: str | None = Field(default=None, max_length=20)
+    email: str | None = Field(default=None, max_length=128)
+
+
 class PasswordIn(BaseModel):
     old_password: str
     new_password: str = Field(min_length=6, max_length=64)
