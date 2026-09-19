@@ -4,6 +4,7 @@ import type { ApiResponse } from '@/types/api'
 export interface RealtimeData {
   flow_trend: { time: string; flow: number }[]
   map_points: { id: number; name: string; lng: number; lat: number; level: number; level_name: string; flow: number; speed: number }[]
+  roads: { name: string; coords: [number, number][]; level: number; flow: number; speed: number }[]
   signal_dist: { name: string; value: number }[]
   violation_top: { name: string; value: number }[]
   parking: { name: string; total: number; used: number; rate: number }[]
@@ -30,4 +31,10 @@ export const recognizePlate = (formData: FormData) =>
   http.post<never, ApiResponse<{ plate_no: string; confidence: number }>>('/lpr/recognize', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 15000,
+  })
+
+// 通用图片上传（违章取证等）
+export const uploadImage = (formData: FormData) =>
+  http.post<never, ApiResponse<{ url: string }>>('/upload/image', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
   })

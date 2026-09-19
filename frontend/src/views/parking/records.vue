@@ -13,6 +13,7 @@
         <el-button type="primary" :icon="Search" @click="load">查询</el-button>
         <span class="spacer" />
         <el-button type="success" :icon="Upload" @click="enterVisible = true">车辆入场</el-button>
+        <el-button type="info" plain :icon="Download" @click="doExport">导出 Excel</el-button>
         <el-button type="warning" :icon="Download" @click="exitVisible = true">车辆出场</el-button>
       </div>
 
@@ -90,6 +91,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { Search, Upload, Download } from '@element-plus/icons-vue'
+import { downloadFile } from '@/api/download'
 import { ElMessage } from 'element-plus'
 import { fetchParkingLots, parkingEnter, parkingExit, fetchParkingRecords } from '@/api/parking'
 import type { ParkingLot } from '@/api/parking'
@@ -110,6 +112,10 @@ const exitForm = reactive({ parking_lot_id: 0, plate_no: '' })
 function onFileChange(e: Event) {
   const files = (e.target as HTMLInputElement).files
   enterForm.file = files && files.length > 0 ? files[0] : null
+}
+
+function doExport() {
+  downloadFile('/export/parking-records.xlsx', { days: 30 }, `出入场记录_${new Date().toISOString().slice(0, 10).replaceAll('-', '')}.xlsx`)
 }
 
 async function load() {

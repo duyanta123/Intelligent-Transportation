@@ -84,6 +84,7 @@ def _build_realtime(db: Session) -> dict:
             if cur is None or flow.congestion_level > cur["level"]:
                 inter_state[iid] = {"level": flow.congestion_level, "flow": flow.flow, "speed": float(flow.speed)}
     intersections = db.query(Intersection).filter(Intersection.is_deleted == 0).all()
+    coords = {i.id: [float(i.longitude), float(i.latitude)] for i in intersections}
     map_points = [
         {
             "id": i.id,
@@ -96,6 +97,18 @@ def _build_realtime(db: Session) -> dict:
             "speed": inter_state.get(i.id, {}).get("speed", 0),
         }
         for i in intersections
+    ]
+    # 2b. 路网连线（供大屏 lines 系列：按路段最新流量的拥堵等级着色 + 流光效果）
+    roads = [
+        {
+            "name": section.name,
+            "coords": [coords.get(section.start_intersection_id), coords.get(section.end_intersection_id)],
+            "level": flow.congestion_level,
+            "flow": flow.flow,
+            "speed": float(flow.speed),
+        }
+        for section, flow in section_rows
+        if section.start_intersection_id in coords and section.end_intersection_id in coords
     ]
 
     # 3. 信号灯状态分布（按当前相位）
@@ -148,6 +161,7 @@ def _build_realtime(db: Session) -> dict:
     return {
         "flow_trend": flow_trend,
         "map_points": map_points,
+        "roads": roads,
         "signal_dist": signal_dist,
         "violation_top": violation_top,
         "parking": parking,

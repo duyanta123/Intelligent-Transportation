@@ -1,19 +1,15 @@
 """智慧停车：停车场 CRUD、计费规则 CRUD、出入场与结算"""
-import os
-import time
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
 from app.core.deps import get_db, require_roles
 from app.core.response import (
     E_NOT_FOUND,
     E_PARKING_DUP,
     E_PARKING_FULL,
     E_PARKING_NO_RECORD,
-    E_UPLOAD,
     BizError,
     ok,
 )
@@ -21,9 +17,8 @@ from app.models import FeeRule, ParkingLot, ParkingRecord, User
 from app.schemas import FeeRuleIn, ParkingEnterIn, ParkingExitIn, ParkingLotIn
 from app.services.algorithms import calc_parking_fee_dt
 from app.services.oplog import log_op
+from app.utils.upload import save_image
 from app.utils.validators import (
-    UPLOAD_MAX_BYTES,
-    UPLOAD_SUFFIXES,
     clamp_page,
     is_valid_plate,
     normalize_plate,
@@ -152,26 +147,6 @@ def delete_fee_rule(
 
 
 # ---------------- 出入场 ----------------
-def _save_upload(file: UploadFile | None) -> str:
-    """保存入场拍照：限 5MB、jpg/png/webp；返回 /static/uploads 相对路径"""
-    if file is None:
-        return ""
-    suffix = os.path.splitext(file.filename or "")[1].lower()
-    if suffix not in UPLOAD_SUFFIXES:
-        raise BizError(*E_UPLOAD)
-    content = file.file.read(UPLOAD_MAX_BYTES + 1)
-    if len(content) > UPLOAD_MAX_BYTES:
-        raise BizError(*E_UPLOAD)
-    if not content:
-        return ""
-    upload_dir = os.path.join(settings.UPLOAD_DIR)
-    os.makedirs(upload_dir, exist_ok=True)
-    filename = f"{time.strftime('%Y%m%d%H%M%S')}_{time.time_ns() % 1000000}{suffix}"
-    with open(os.path.join(upload_dir, filename), "wb") as f:
-        f.write(content)
-    return f"/static/uploads/{filename}"
-
-
 @router.post("/parking/enter")
 async def parking_enter(
     request: Request,
@@ -203,7 +178,7 @@ async def parking_enter(
         raise BizError(*E_PARKING_DUP)
     if lot.used_slots >= lot.total_slots:
         raise BizError(*E_PARKING_FULL)
-    image_url = _save_upload(file)
+    image_url = save_image(file)
     record = ParkingRecord(
         parking_lot_id=lot.id,
         plate_no=plate,

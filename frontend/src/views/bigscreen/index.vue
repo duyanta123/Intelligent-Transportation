@@ -208,7 +208,8 @@ function renderCharts() {
       },
     ],
   })
-  // 5. 地图散点（路口拥堵态势）
+  // 5. 地图：路网连线（按拥堵等级着色 + 流光）+ 路口散点
+  const roads = data.value.roads ?? []
   mapChart?.setOption({
     geo: {
       map: 'smartcity',
@@ -217,6 +218,32 @@ function renderCharts() {
       emphasis: { disabled: true },
     },
     series: [
+      {
+        name: '路网',
+        type: 'lines',
+        coordinateSystem: 'geo',
+        polyline: false,
+        data: roads.map((r) => ({
+          name: r.name,
+          coords: r.coords,
+          lineStyle: { color: LEVEL_COLORS[r.level] },
+        })),
+        lineStyle: { width: 3.5, opacity: 0.75, cap: 'round', curveness: 0 },
+        effect: {
+          show: true,
+          period: 5,
+          trailLength: 0.35,
+          symbol: 'arrow',
+          symbolSize: 6,
+          color: '#ffffff',
+        },
+        tooltip: {
+          formatter: (p: { name: string; data: { lineStyle: { color: string } } }) => {
+            const road = roads.find((r) => r.name === p.name)
+            return road ? `${p.name}<br/>拥堵等级：${LEVEL_NAMES[road.level]}<br/>流率：${road.flow} pcu/h · 车速：${road.speed} km/h` : p.name
+          },
+        },
+      },
       {
         type: 'scatter',
         coordinateSystem: 'geo',

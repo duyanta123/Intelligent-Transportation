@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     CAPTCHA_TTL_SECONDS: int = 300
     DASHBOARD_CACHE_TTL_SECONDS: int = 8
     UPLOAD_DIR: str = "uploads"
+    # 流量时序数据保留天数（超过则物理清理；0=禁用清理。属遥测数据，非业务单据）
+    FLOW_RETENTION_DAYS: int = 90
     # 测试开关：pytest 下置 1，禁用定时任务与真实依赖混用
     TESTING: int = 0
 

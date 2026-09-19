@@ -61,6 +61,8 @@ from app.routers import (
     admin,
     auth,
     dashboard,
+    export,
+    files,
     lpr,
     parking,
     service,
@@ -77,6 +79,8 @@ app.include_router(traffic.router, prefix="/api/v1")
 app.include_router(violation.router, prefix="/api/v1")
 app.include_router(parking.router, prefix="/api/v1")
 app.include_router(lpr.router, prefix="/api/v1")
+app.include_router(files.router, prefix="/api/v1")
+app.include_router(export.router, prefix="/api/v1")
 app.include_router(service.router, prefix="/api/v1")
 app.include_router(dashboard.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")

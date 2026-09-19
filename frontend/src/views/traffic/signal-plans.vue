@@ -89,6 +89,25 @@
             </el-table-column>
           </el-table>
         </el-card>
+
+        <!-- 方案对比 -->
+        <el-card shadow="never" style="margin-top: 14px">
+          <template #header>
+            <div class="card-header">
+              <span>方案对比（任选两个方案对比相位绿灯分配）</span>
+              <div style="display: flex; gap: 10px">
+                <el-select v-model="compareA" placeholder="方案 A" clearable style="width: 220px">
+                  <el-option v-for="p in plans" :key="p.id" :label="`${p.intersection_name} · ${p.name}`" :value="p.id" />
+                </el-select>
+                <el-select v-model="compareB" placeholder="方案 B" clearable style="width: 220px">
+                  <el-option v-for="p in plans" :key="p.id" :label="`${p.intersection_name} · ${p.name}`" :value="p.id" />
+                </el-select>
+              </div>
+            </div>
+          </template>
+          <v-chart v-if="compareA && compareB" :option="compareOption" style="height: 300px" autoresize />
+          <el-empty v-else description="请选择两个配时方案进行对比" :image-size="60" />
+        </el-card>
       </el-col>
     </el-row>
   </div>
@@ -103,6 +122,13 @@ import { fetchIntersections, fetchSignalPlans, createSignalPlan, deleteSignalPla
 import type { Intersection, SignalPlan } from '@/api/traffic'
 import { websterCalc } from '@/utils/algorithms'
 import { useAuthStore } from '@/stores/auth'
+import { use } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
+import { BarChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/components'
+import VChart from 'vue-echarts'
+
+use([CanvasRenderer, BarChart, GridComponent, TooltipComponent, LegendComponent])
 
 const auth = useAuthStore()
 const route = useRoute()
@@ -111,6 +137,39 @@ const plans = ref<SignalPlan[]>([])
 const loading = ref(false)
 const filterId = ref<number | ''>('')
 const calcLoading = ref(false)
+
+// ---- 方案对比 ----
+const compareA = ref<number | ''>('')
+const compareB = ref<number | ''>('')
+const compareOption = computed(() => {
+  const pa = plans.value.find((p) => p.id === compareA.value)
+  const pb = plans.value.find((p) => p.id === compareB.value)
+  if (!pa || !pb) return {}
+  const phaseNames = [...new Set([...(pa.phases ?? []), ...(pb.phases ?? [])].map((p) => p.name))]
+  const greenOf = (plan: SignalPlan, name: string) => plan.phases?.find((p) => p.name === name)?.green ?? 0
+  return {
+    tooltip: { trigger: 'axis' },
+    legend: { data: [pa.name, pb.name] },
+    grid: { left: 55, right: 20, top: 50, bottom: 30 },
+    xAxis: { type: 'category', data: phaseNames },
+    yAxis: { type: 'value', name: '绿灯(s)' },
+    series: [
+      {
+        name: `${pa.name}（周期 ${pa.cycle_seconds}s）`,
+        type: 'bar',
+        data: phaseNames.map((n) => greenOf(pa, n)),
+        itemStyle: { color: '#409eff', borderRadius: 4 },
+        barGap: '10%',
+      },
+      {
+        name: `${pb.name}（周期 ${pb.cycle_seconds}s）`,
+        type: 'bar',
+        data: phaseNames.map((n) => greenOf(pb, n)),
+        itemStyle: { color: '#e6a23c', borderRadius: 4 },
+      },
+    ],
+  }
+})
 
 interface CalcPhase {
   name: string

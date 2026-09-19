@@ -11,6 +11,7 @@
         </el-select>
         <el-button type="primary" :icon="Search" @click="load">查询</el-button>
         <span class="spacer" />
+        <el-button v-if="canManage" type="success" plain :icon="Download" @click="doExport">导出 Excel</el-button>
         <el-button v-if="canManage" type="primary" :icon="Plus" @click="openCreate">录入违章</el-button>
       </div>
 
@@ -69,6 +70,19 @@
         <el-form-item label="记分">
           <el-input-number v-model="form.deduct_points" :min="0" :max="12" style="width: 100%" />
         </el-form-item>
+        <el-form-item label="取证照片">
+          <div style="width: 100%">
+            <input type="file" accept=".jpg,.jpeg,.png,.webp" @change="onEvidenceChange" />
+            <el-image
+              v-if="form.evidence_url"
+              :src="form.evidence_url"
+              :preview-src-list="[form.evidence_url]"
+              preview-teleported
+              fit="cover"
+              style="width: 120px; height: 84px; margin-top: 8px; border-radius: 6px"
+            />
+          </div>
+        </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="form.remark" type="textarea" :rows="2" />
         </el-form-item>
@@ -83,10 +97,12 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { Search, Plus } from '@element-plus/icons-vue'
+import { Search, Plus, Download } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { fetchViolations, createViolation, auditViolation, processViolation, fetchViolationTypes } from '@/api/vehicle'
 import { fetchIntersections } from '@/api/traffic'
+import { uploadImage } from '@/api/dashboard'
+import { downloadFile } from '@/api/download'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
@@ -104,7 +120,7 @@ const query = reactive({ plate_no: '', violation_type: '', status: '' })
 const createVisible = ref(false)
 const formRef = ref<FormInstance>()
 const presets: Record<string, { fine: number; points: number }> = {}
-const form = reactive({ plate_no: '', violation_type: '', intersection_id: undefined as number | undefined, violation_time: '', fine_amount: 0, deduct_points: 0, remark: '' })
+const form = reactive({ plate_no: '', violation_type: '', intersection_id: undefined as number | undefined, violation_time: '', fine_amount: 0, deduct_points: 0, evidence_url: '', remark: '' })
 
 const rules: FormRules = {
   plate_no: [
@@ -137,8 +153,22 @@ async function load() {
 }
 
 function openCreate() {
-  Object.assign(form, { plate_no: '', violation_type: '', intersection_id: undefined, violation_time: new Date().toISOString().slice(0, 19), fine_amount: 0, deduct_points: 0, remark: '' })
+  Object.assign(form, { plate_no: '', violation_type: '', intersection_id: undefined, violation_time: new Date().toISOString().slice(0, 19), fine_amount: 0, deduct_points: 0, evidence_url: '', remark: '' })
   createVisible.value = true
+}
+
+async function onEvidenceChange(e: Event) {
+  const files = (e.target as HTMLInputElement).files
+  if (!files || files.length === 0) return
+  const fd = new FormData()
+  fd.append('file', files[0])
+  const { data } = await uploadImage(fd)
+  form.evidence_url = data.url
+  ElMessage.success('取证照片已上传')
+}
+
+function doExport() {
+  downloadFile('/export/violations.xlsx', { days: 30 }, `违章明细_${new Date().toISOString().slice(0, 10).replaceAll('-', '')}.xlsx`)
 }
 
 async function save() {

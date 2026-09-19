@@ -1,7 +1,8 @@
-"""APScheduler 定时任务：模拟数据生成（.env 开关 MOCK_DATA_ENABLED 控制）
+"""APScheduler 定时任务：模拟数据生成与数据治理
 
 1. 每分钟：为全部路段生成一条分钟级流量记录（体现早晚高峰形态）
 2. 每 10 秒：推进信号灯实时状态（按启用方案相位顺序轮转）
+3. 每日 03:30：流量时序数据保留清理（FLOW_RETENTION_DAYS，0=禁用）
 """
 import logging
 from datetime import datetime
@@ -104,14 +105,55 @@ def _advance_signal_status():
         db.close()
 
 
+def cleanup_flow_data(db=None) -> int:
+    """流量时序数据保留策略：物理清理超过 FLOW_RETENTION_DAYS 的记录。
+
+    说明：traffic_flow 属于时序遥测数据（非业务单据），超期数据无业务价值，
+    按"数据生命周期管理"做物理删除以控制表体积（每分钟约新增 2 万行）；
+    retention<=0 表示禁用清理。可传入 db 会话（测试用），否则自建会话。
+    返回清理的行数。
+    """
+    if settings.FLOW_RETENTION_DAYS <= 0:
+        return 0
+    own_session = db is None
+    if own_session:
+        db = SessionLocal()
+    try:
+        from datetime import timedelta
+
+        from app.models import TrafficFlow
+
+        cutoff = datetime.now() - timedelta(days=settings.FLOW_RETENTION_DAYS)
+        deleted = (
+            db.query(TrafficFlow)
+            .filter(TrafficFlow.recorded_at < cutoff)
+            .delete(synchronize_session=False)
+        )
+        db.commit()
+        if deleted:
+            logger.info("流量数据保留清理：删除 %s 条 %s 之前的记录", deleted, cutoff.strftime("%Y-%m-%d %H:%M:%S"))
+        return int(deleted)
+    except Exception:
+        db.rollback()
+        logger.exception("流量数据保留清理失败")
+        return 0
+    finally:
+        if own_session:
+            db.close()
+
+
 def start_scheduler():
     if not settings.MOCK_DATA_ENABLED:
         logger.info("MOCK_DATA_ENABLED=false，模拟数据定时任务未启动")
+        scheduler.add_job(cleanup_flow_data, "cron", hour=3, minute=30, id="flow_cleanup", replace_existing=True)
+        scheduler.start()
+        logger.info("仅数据清理任务已启动（每日 03:30）")
         return
     scheduler.add_job(_mock_traffic_flow, "interval", seconds=60, id="mock_flow", replace_existing=True)
     scheduler.add_job(_advance_signal_status, "interval", seconds=10, id="signal_tick", replace_existing=True)
+    scheduler.add_job(cleanup_flow_data, "cron", hour=3, minute=30, id="flow_cleanup", replace_existing=True)
     scheduler.start()
-    logger.info("模拟数据定时任务已启动（流量每 60 秒 / 信号灯每 10 秒）")
+    logger.info("模拟数据定时任务已启动（流量每 60 秒 / 信号灯每 10 秒 / 数据清理每日 03:30）")
 
 
 def stop_scheduler():

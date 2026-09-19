@@ -38,6 +38,7 @@
               <el-radio-button value="day">按天</el-radio-button>
             </el-radio-group>
             <el-button type="primary" @click="loadHistory">查询</el-button>
+            <el-button plain :icon="Download" @click="doExport">导出日报</el-button>
             <span v-if="canReport" class="spacer" />
             <el-button v-if="canReport" type="success" plain @click="reportVisible = true">模拟上报</el-button>
           </div>
@@ -77,6 +78,8 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Download } from '@element-plus/icons-vue'
+import { downloadFile } from '@/api/download'
 import { fetchSections, fetchFlowHistory, fetchCongestion, reportFlow } from '@/api/traffic'
 import type { RoadSection } from '@/api/traffic'
 import { useAuthStore } from '@/stores/auth'
@@ -117,6 +120,10 @@ const historyOption = computed(() => ({
     { name: '峰值流率', type: 'line', smooth: true, data: historyRows.value.map((r) => r.max_flow), itemStyle: { color: '#e6a23c' } },
   ],
 }))
+
+function doExport() {
+  downloadFile('/export/traffic-report.xlsx', { days: 7 }, `流量日报_${new Date().toISOString().slice(0, 10).replaceAll('-', '')}.xlsx`)
+}
 
 async function loadCongestion() {
   congestionLoading.value = true
