@@ -1,0 +1,107 @@
+# 🚦 智慧交通综合管理服务平台
+
+> 软件工程课程作业 · B/S 架构单体应用 · Vue3 + FastAPI + MySQL + Redis
+
+![Vue3](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vuedotjs&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-6-646CFF?logo=vite&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TS-strict-3178C6?logo=typescript&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.14x-009688?logo=fastapi&logoColor=white)
+![MySQL](https://img.shields.io/badge/MySQL-8-4479A1?logo=mysql&logoColor=white)
+![Redis](https://img.shields.io/badge/Redis-5-DC382D?logo=redis&logoColor=white)
+![pytest](https://img.shields.io/badge/pytest-85%20passed-0A9EDC?logo=pytest&logoColor=white)
+![vitest](https://img.shields.io/badge/vitest-14%20passed-6E9F18?logo=vitest&logoColor=white)
+
+## 项目简介
+
+面向城市交通管理场景的综合服务平台，覆盖 **用户权限（RBAC+JWT）、路口与信号配时（Webster 公式）、路况监测（拥堵四级分级）、车辆违章、智慧停车（分时段计费）、车牌识别（HyperLPR3 CPU）、公告反馈、数据可视化大屏、系统仪表盘** 九大模块。
+
+- 三类角色：`admin` 管理员 / `officer` 交警运营 / `user` 普通用户，前端菜单按角色渲染 + 后端接口 403 兜底
+- 三个核心算法均为**纯函数**并前后端同源双实现、双侧单测：Webster 配时、拥堵分级、停车计费
+- 数据大屏（1920×1080 scale 自适应）：24h 流量趋势、8 路口地图散点、信号分布、违章 TOP5、停车占用、KPI 卡，10 秒轮询 + Redis 缓存（TTL 8s）+ 后端宕机友好降级
+
+## 架构图
+
+```mermaid
+graph LR
+    subgraph 前端 Vue3+Vite+TS
+        A[管理端 Element Plus] 
+        B[数据大屏 ECharts5 geo]
+    end
+    subgraph 后端 FastAPI
+        C[routers 路由层]
+        D[services 服务层<br/>Webster/拥堵/计费 纯函数]
+        E[models SQLAlchemy 2.x]
+        F[APScheduler 模拟数据]
+    end
+    G[(MySQL 8<br/>smart_traffic)]
+    H[(Redis 5<br/>验证码/黑名单/限流/缓存)]
+    I[/uploads 入场拍照/]
+
+    A & B -->|/api/v1| C --> D --> E --> G
+    C --> H
+    F --> E
+    I -.->|/static/uploads| A
+```
+
+## 5 分钟快速启动
+
+> 前置：Node ≥20.19、Python 3.13、MySQL 8（服务 MySQL80）、Redis 5（服务 Redis）已运行。
+
+```bash
+# 1) 后端
+cd backend
+python -m venv venv && source venv/Scripts/activate
+pip install -r requirements.txt
+cp .env.example .env          # 填 DB_PASSWORD 与 JWT_SECRET
+./venv/Scripts/python.exe -m uvicorn app.main:app --port 8000   # 接口文档 http://127.0.0.1:8000/docs
+
+# 2) 数据库（密码从 .env 读取；或直接运行 reset-db.bat）
+mysql -uroot -p < sql/init.sql
+mysql -uroot -p smart_traffic < sql/seed.sql
+
+# 3) 前端
+cd frontend
+npm install
+npm run dev                   # http://localhost:5173
+```
+
+**测试账号**（密码均为 `123456`）：
+
+| 账号 | 角色 |
+|---|---|
+| admin | 管理员（全部权限） |
+| officer | 交警运营（配时/录入/审核/停车/反馈处理） |
+| user | 普通用户（大屏/路况/本人车辆违章/反馈） |
+
+> Windows 一键启停：`start.bat` / `stop.bat`；答辩前还原演示数据：`reset-db.bat`。演示动线见 [demo.md](demo.md)。
+
+## 目录结构
+
+```
+smart-traffic/
+├── backend/          # FastAPI 后端（app/routers|services|models 三层 + tasks + tests）
+│   └── uploads/      # 入场拍照（/static/uploads 回显，不入库）
+├── frontend/         # Vue3 前端（src/views|api|stores + vitest）
+├── docs/             # 课程文档 01-05 + PROGRESS.md 进度台账
+├── sql/              # init.sql 建表 + seed.sql 种子数据
+├── scripts/          # gen_seed.py 种子生成脚本（可刷新日期重新生成）
+├── start.bat / stop.bat / reset-db.bat
+└── demo.md           # 答辩演示动线
+```
+
+## 质量保障
+
+| 项 | 结果 |
+|---|---|
+| 后端测试 | `pytest` **85 passed**（独立测试库 smart_traffic_test） |
+| 前端测试 | `npm run test` **14 passed**（登录/计费/配时核心模块） |
+| 静态检查 | `ruff check` 全绿 / `eslint` 0 problems |
+| 构建 | `npm run build` ✓ |
+| 文档 | docs/01 需求 · 02 设计（E-R/类图/时序图）· 03 数据库 · 04 测试报告 · 05 部署手册 |
+
+## 核心算法参数（附录 D 统一口径）
+
+- **Webster**：s=1800 pcu/h/车道；每相位损失 6s；`C0=(1.5L+5)/(1−Y)` 钳制 [40,180]s；绿灯按流量比分配、最短 15s；Y≥0.95 过饱和按上限输出
+- **拥堵分级**（v/c）：<0.4 自由流 / 0.4–0.7 缓行 / 0.7–0.9 拥堵 / ≥0.9 严重拥堵；路段通行能力 = 车道数 × 600
+- **停车计费**：免费时长 → 首小时 → 每小时（向上取整）→ 单日封顶（每 24h 一段）
+- **流量形态**：平峰 300–600、早晚高峰峰值 1500–2200（7:30–9:00 / 17:30–19:00）、夜间 50–150、±10% 噪声、周五晚 ×1.15、周末 ×0.6

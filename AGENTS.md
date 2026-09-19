@@ -92,7 +92,7 @@ npm run build                                    # 构建验证
 - `mysql`/`redis-cli` 直接敲命令会报 command not found —— 必须用第 3 节的完整路径，或先提示用户加入 PATH
 - venv 激活路径是 `venv/Scripts/activate`（不是 Linux 的 `bin/`）
 - 路径拼接统一用正斜杠；写 .bat 脚本时才用反斜杠
-- **.bat 文件必须保存为 CRLF 行尾 + UTF-8 BOM**（LF 行尾会让 cmd 解析错乱报错，无 BOM 会让中文输出乱码）；生成 .bat 后务必实际运行一次验证
+- **.bat 文件必须保存为 CRLF 行尾 + UTF-8 无 BOM**（2026-09-20 实测修正：带 BOM 时 cmd 会把首行 `@echo off` 读成 `锘緻echo` 而报错；中文乱码靠第二行 `chcp 65001 >nul` 解决，无 BOM + CRLF 实测三种 bat 均正常）；生成 .bat 后务必实际运行一次验证；.bat 内 for 循环变量必须写 `%%P`（不能 `%P`）
 - PyMySQL 连 MySQL 8 需同时安装 `cryptography`（caching_sha2_password 认证）
 - **passlib 必须搭配 `bcrypt<4.1`**（bcrypt 4.1+ 与 passlib 不兼容，会在 Python 3.13 下报错），requirements.txt 中钉死版本
 - python-jose 若在 Python 3.13 下出现兼容问题，允许替换为 PyJWT（需在文档中注明）
