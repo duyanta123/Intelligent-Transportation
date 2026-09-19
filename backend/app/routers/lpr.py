@@ -1,4 +1,5 @@
 """车牌识别路由：POST /lpr/recognize（multipart 上传，10 秒超时保护）"""
+import logging
 import os
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile
@@ -9,6 +10,8 @@ from app.models import User
 from app.services.lpr_service import recognize_plate
 from app.services.oplog import log_op
 from app.utils.validators import UPLOAD_MAX_BYTES, UPLOAD_SUFFIXES
+
+logger = logging.getLogger("smart-traffic.lpr")
 
 router = APIRouter(prefix="/lpr", tags=["车牌识别"])
 
@@ -30,6 +33,7 @@ async def recognize(
     try:
         result = recognize_plate(content)
     except Exception as err:
+        logger.warning("车牌识别失败：%s", err)
         raise BizError(*E_LPR_FAILED) from err
     log_op(db, request, current_user, "识别", f"车牌识别：{result['plate_no']}（置信度 {result['confidence']}）")
     db.commit()

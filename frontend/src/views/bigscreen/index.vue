@@ -34,7 +34,7 @@
           </panel>
         </div>
         <div class="col middle">
-          <panel title="各路口实时拥堵态势" height="640px">
+          <panel title="各路口实时拥堵态势" height="630px">
             <div ref="mapRef" class="chart map-chart" />
           </panel>
           <div class="legend-bar">
@@ -225,9 +225,8 @@ function renderCharts() {
           name: p.name,
           value: [p.lng, p.lat, p.level],
           level: p.level,
+          itemStyle: { color: LEVEL_COLORS[p.level], shadowBlur: 14, shadowColor: LEVEL_COLORS[p.level] },
         })),
-        itemStyle: { shadowBlur: 14 },
-        color: (p: { data: { level: number } }) => LEVEL_COLORS[p.data.level],
         label: {
           show: true,
           position: 'right',
@@ -413,7 +412,7 @@ onBeforeUnmount(() => {
   height: 245px;
 }
 .map-chart {
-  height: 100%;
+  height: 545px;
 }
 .legend-bar {
   display: flex;

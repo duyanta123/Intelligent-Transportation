@@ -90,11 +90,15 @@ def health():
 
 @app.on_event("startup")
 def on_startup():
-    # 测试环境下不启动定时任务
+    # 测试环境下不启动定时任务与模型预热
     if not settings.TESTING:
         from app.tasks.scheduler import start_scheduler
 
         start_scheduler()
+        # 后台预热车牌识别模型（首次运行自动下载约 12MB，不阻塞启动）
+        from app.services.lpr_service import preload_async
+
+        preload_async()
 
 
 @app.on_event("shutdown")

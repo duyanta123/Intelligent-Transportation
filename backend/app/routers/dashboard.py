@@ -102,11 +102,11 @@ def _build_realtime(db: Session) -> dict:
     status_rows = db.query(SignalStatus.current_phase, func.count(SignalStatus.id)).group_by(SignalStatus.current_phase).all()
     signal_dist = [{"name": name or "未知", "value": int(cnt)} for name, cnt in status_rows]
 
-    # 4. 今日违章类型 TOP5
+    # 4. 违章类型 TOP5（近 7 天：今日数据量少时大屏仍有内容）
     violation_top = [
         {"name": t or "其他", "value": int(c)}
         for t, c in db.query(Violation.violation_type, func.count(Violation.id))
-        .filter(Violation.is_deleted == 0, Violation.violation_time >= day_start)
+        .filter(Violation.is_deleted == 0, Violation.violation_time >= day_start - timedelta(days=6))
         .group_by(Violation.violation_type)
         .order_by(func.count(Violation.id).desc())
         .limit(5)
