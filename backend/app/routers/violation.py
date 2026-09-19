@@ -108,7 +108,11 @@ def _is_plate_valid(plate: str) -> bool:
 
 @router.put("/vehicles/{item_id}")
 def update_vehicle(
-    item_id: int, body: VehicleIn, request: Request, _: User = Depends(require_roles("admin", "officer")), db: Session = Depends(get_db)
+    item_id: int,
+    body: VehicleIn,
+    request: Request,
+    admin_user: User = Depends(require_roles("admin", "officer")),
+    db: Session = Depends(get_db),
 ):
     vehicle = db.query(Vehicle).filter(Vehicle.id == item_id, Vehicle.is_deleted == 0).first()
     if vehicle is None:
@@ -120,20 +124,20 @@ def update_vehicle(
     data["plate_no"] = plate
     for field, value in data.items():
         setattr(vehicle, field, value)
-    log_op(db, request, _, "修改", f"修改车辆信息：{plate}")
+    log_op(db, request, admin_user, "修改", f"修改车辆信息：{plate}")
     db.commit()
     return ok(None, "更新成功")
 
 
 @router.delete("/vehicles/{item_id}")
 def delete_vehicle(
-    item_id: int, request: Request, _: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
+    item_id: int, request: Request, admin_user: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
 ):
     vehicle = db.query(Vehicle).filter(Vehicle.id == item_id, Vehicle.is_deleted == 0).first()
     if vehicle is None:
         raise BizError(*E_NOT_FOUND)
     vehicle.is_deleted = 1
-    log_op(db, request, _, "删除", f"删除车辆：{vehicle.plate_no}（软删除）")
+    log_op(db, request, admin_user, "删除", f"删除车辆：{vehicle.plate_no}（软删除）")
     db.commit()
     return ok(None, "删除成功")
 

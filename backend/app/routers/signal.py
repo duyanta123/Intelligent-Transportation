@@ -43,39 +43,39 @@ def list_intersections(
 
 @router.post("/intersections")
 def create_intersection(
-    body: IntersectionIn, request: Request, _: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
+    body: IntersectionIn, request: Request, admin_user: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
 ):
     item = Intersection(**body.model_dump())
     db.add(item)
     db.flush()
-    log_op(db, request, _, "新增", f"新增路口：{item.name}")
+    log_op(db, request, admin_user, "新增", f"新增路口：{item.name}")
     db.commit()
     return ok({"id": item.id}, "创建成功")
 
 
 @router.put("/intersections/{item_id}")
 def update_intersection(
-    item_id: int, body: IntersectionIn, request: Request, _: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
+    item_id: int, body: IntersectionIn, request: Request, admin_user: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
 ):
     item = db.query(Intersection).filter(Intersection.id == item_id, Intersection.is_deleted == 0).first()
     if item is None:
         raise BizError(*E_NOT_FOUND)
     for field, value in body.model_dump().items():
         setattr(item, field, value)
-    log_op(db, request, _, "修改", f"修改路口：{item.name}")
+    log_op(db, request, admin_user, "修改", f"修改路口：{item.name}")
     db.commit()
     return ok(None, "更新成功")
 
 
 @router.delete("/intersections/{item_id}")
 def delete_intersection(
-    item_id: int, request: Request, _: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
+    item_id: int, request: Request, admin_user: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
 ):
     item = db.query(Intersection).filter(Intersection.id == item_id, Intersection.is_deleted == 0).first()
     if item is None:
         raise BizError(*E_NOT_FOUND)
     item.is_deleted = 1
-    log_op(db, request, _, "删除", f"删除路口：{item.name}（软删除）")
+    log_op(db, request, admin_user, "删除", f"删除路口：{item.name}（软删除）")
     db.commit()
     return ok(None, "删除成功")
 
@@ -152,7 +152,7 @@ def create_signal_plan(
 
 @router.put("/signal-plans/{item_id}")
 def update_signal_plan(
-    item_id: int, body: SignalPlanIn, request: Request, _: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
+    item_id: int, body: SignalPlanIn, request: Request, admin_user: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
 ):
     plan = db.query(SignalPlan).filter(SignalPlan.id == item_id, SignalPlan.is_deleted == 0).first()
     if plan is None:
@@ -170,20 +170,20 @@ def update_signal_plan(
     if data["is_active"]:
         _deactivate_others(db, data["intersection_id"], keep_id=plan.id)
         plan.is_active = 1
-    log_op(db, request, _, "修改", f"修改配时方案：{plan.name}")
+    log_op(db, request, admin_user, "修改", f"修改配时方案：{plan.name}")
     db.commit()
     return ok(None, "更新成功")
 
 
 @router.delete("/signal-plans/{item_id}")
 def delete_signal_plan(
-    item_id: int, request: Request, _: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
+    item_id: int, request: Request, admin_user: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
 ):
     plan = db.query(SignalPlan).filter(SignalPlan.id == item_id, SignalPlan.is_deleted == 0).first()
     if plan is None:
         raise BizError(*E_NOT_FOUND)
     plan.is_deleted = 1
-    log_op(db, request, _, "删除", f"删除配时方案：{plan.name}（软删除）")
+    log_op(db, request, admin_user, "删除", f"删除配时方案：{plan.name}（软删除）")
     db.commit()
     return ok(None, "删除成功")
 

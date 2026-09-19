@@ -27,8 +27,11 @@ def get_role_menu_list(db: Session, role_id: int) -> list[Menu]:
 
 
 def build_menu_tree(menus: list[Menu], parent_id: int = 0) -> list[dict]:
-    """把平铺菜单组装成树形结构"""
-    items = [m for m in menus if m.parent_id == parent_id]
+    """把平铺菜单组装成树形结构（同级按 sort_order、id 排序，不依赖调用方传入顺序）"""
+    items = sorted(
+        (m for m in menus if m.parent_id == parent_id),
+        key=lambda m: (m.sort_order, m.id),
+    )
     tree = []
     for m in items:
         node = {

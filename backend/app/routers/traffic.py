@@ -53,20 +53,20 @@ def list_sections(
 
 @router.post("/road-sections")
 def create_section(
-    body: RoadSectionIn, request: Request, _: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
+    body: RoadSectionIn, request: Request, admin_user: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
 ):
     item = RoadSection(**body.model_dump())
     item.capacity = int(item.lane_count * CAPACITY_PER_LANE)
     db.add(item)
     db.flush()
-    log_op(db, request, _, "新增", f"新增路段：{item.name}")
+    log_op(db, request, admin_user, "新增", f"新增路段：{item.name}")
     db.commit()
     return ok({"id": item.id}, "创建成功")
 
 
 @router.put("/road-sections/{item_id}")
 def update_section(
-    item_id: int, body: RoadSectionIn, request: Request, _: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
+    item_id: int, body: RoadSectionIn, request: Request, admin_user: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
 ):
     item = db.query(RoadSection).filter(RoadSection.id == item_id, RoadSection.is_deleted == 0).first()
     if item is None:
@@ -75,20 +75,20 @@ def update_section(
     for field, value in data.items():
         setattr(item, field, value)
     item.capacity = int(item.lane_count * CAPACITY_PER_LANE)
-    log_op(db, request, _, "修改", f"修改路段：{item.name}")
+    log_op(db, request, admin_user, "修改", f"修改路段：{item.name}")
     db.commit()
     return ok(None, "更新成功")
 
 
 @router.delete("/road-sections/{item_id}")
 def delete_section(
-    item_id: int, request: Request, _: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
+    item_id: int, request: Request, admin_user: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
 ):
     item = db.query(RoadSection).filter(RoadSection.id == item_id, RoadSection.is_deleted == 0).first()
     if item is None:
         raise BizError(*E_NOT_FOUND)
     item.is_deleted = 1
-    log_op(db, request, _, "删除", f"删除路段：{item.name}（软删除）")
+    log_op(db, request, admin_user, "删除", f"删除路段：{item.name}（软删除）")
     db.commit()
     return ok(None, "删除成功")
 
@@ -140,7 +140,7 @@ def flow_history(
     end: datetime | None = Query(None),
     granularity: str = Query("hour", pattern=r"^(hour|day)$"),
     page: int = Query(1, ge=1),
-    size: int = Query(20, ge=1, le=100),
+    size: int = Query(20, ge=1, le=500, description="聚合数据轻量，放宽至 500 支撑对比模式"),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles("admin", "officer", "user")),
 ):

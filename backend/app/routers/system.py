@@ -18,7 +18,7 @@ def list_users(
     page: int = Query(1, ge=1),
     size: int = Query(10, ge=1, le=100),
     keyword: str = Query("", description="用户名/姓名/手机号"),
-    _: User = Depends(require_roles("admin")),
+    admin_user: User = Depends(require_roles("admin")),
     db: Session = Depends(get_db),
 ):
     page, size = clamp_page(page, size)
@@ -50,7 +50,7 @@ def update_user(
     user_id: int,
     body: UserUpdateIn,
     request: Request,
-    _: User = Depends(require_roles("admin")),
+    admin_user: User = Depends(require_roles("admin")),
     db: Session = Depends(get_db),
 ):
     user = db.query(User).filter(User.id == user_id, User.is_deleted == 0).first()
@@ -66,14 +66,14 @@ def update_user(
 
 
 @router.get("/roles")
-def list_roles(_: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
+def list_roles(admin_user: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
     rows = db.query(Role).filter(Role.is_deleted == 0).order_by(Role.id).all()
     return ok([{"id": r.id, "code": r.code, "name": r.name, "description": r.description} for r in rows])
 
 
 # ---------------- 菜单 CRUD ----------------
 @router.get("/menus")
-def list_menus(_: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
+def list_menus(admin_user: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
     rows = db.query(Menu).filter(Menu.is_deleted == 0).order_by(Menu.sort_order, Menu.id).all()
     return ok(
         [
@@ -94,36 +94,36 @@ def list_menus(_: User = Depends(require_roles("admin")), db: Session = Depends(
 
 
 @router.post("/menus")
-def create_menu(body: MenuIn, request: Request, _: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
+def create_menu(body: MenuIn, request: Request, admin_user: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
     menu = Menu(**body.model_dump())
     db.add(menu)
     db.flush()
-    log_op(db, request, _, "新增", f"新增菜单：{menu.name}")
+    log_op(db, request, admin_user, "新增", f"新增菜单：{menu.name}")
     db.commit()
     return ok({"id": menu.id}, "创建成功")
 
 
 @router.put("/menus/{menu_id}")
 def update_menu(
-    menu_id: int, body: MenuIn, request: Request, _: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
+    menu_id: int, body: MenuIn, request: Request, admin_user: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
 ):
     menu = db.query(Menu).filter(Menu.id == menu_id, Menu.is_deleted == 0).first()
     if menu is None:
         raise BizError(*E_NOT_FOUND)
     for field, value in body.model_dump().items():
         setattr(menu, field, value)
-    log_op(db, request, _, "修改", f"修改菜单：{menu.name}")
+    log_op(db, request, admin_user, "修改", f"修改菜单：{menu.name}")
     db.commit()
     return ok(None, "更新成功")
 
 
 @router.delete("/menus/{menu_id}")
-def delete_menu(menu_id: int, request: Request, _: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
+def delete_menu(menu_id: int, request: Request, admin_user: User = Depends(require_roles("admin")), db: Session = Depends(get_db)):
     menu = db.query(Menu).filter(Menu.id == menu_id, Menu.is_deleted == 0).first()
     if menu is None:
         raise BizError(*E_NOT_FOUND)
     menu.is_deleted = 1
-    log_op(db, request, _, "删除", f"删除菜单：{menu.name}（软删除）")
+    log_op(db, request, admin_user, "删除", f"删除菜单：{menu.name}（软删除）")
     db.commit()
     return ok(None, "删除成功")
 
@@ -134,7 +134,7 @@ def list_op_logs(
     size: int = Query(10, ge=1, le=100),
     username: str = Query(""),
     action: str = Query(""),
-    _: User = Depends(require_roles("admin")),
+    admin_user: User = Depends(require_roles("admin")),
     db: Session = Depends(get_db),
 ):
     page, size = clamp_page(page, size)

@@ -10,6 +10,15 @@
           <el-option label="已出场" value="finished" />
         </el-select>
         <el-input v-model="query.plate_no" placeholder="车牌号" clearable style="width: 160px" />
+        <el-date-picker
+          v-model="enterRange"
+          type="datetimerange"
+          range-separator="至"
+          start-placeholder="入场开始"
+          end-placeholder="入场结束"
+          value-format="YYYY-MM-DDTHH:mm:ss"
+          style="width: 340px"
+        />
         <el-button type="primary" :icon="Search" @click="load">查询</el-button>
         <span class="spacer" />
         <el-button type="success" :icon="Upload" @click="enterVisible = true">车辆入场</el-button>
@@ -103,6 +112,7 @@ const page = ref(1)
 const size = ref(10)
 const loading = ref(false)
 const query = reactive({ parking_lot_id: undefined as number | undefined, status: '', plate_no: '' })
+const enterRange = ref<[string, string] | null>(null)
 
 const enterVisible = ref(false)
 const exitVisible = ref(false)
@@ -125,6 +135,10 @@ async function load() {
     if (query.parking_lot_id) params.parking_lot_id = query.parking_lot_id
     if (query.status) params.status = query.status
     if (query.plate_no) params.plate_no = query.plate_no
+    if (enterRange.value) {
+      params.enter_start = enterRange.value[0]
+      params.enter_end = enterRange.value[1]
+    }
     const { data } = await fetchParkingRecords(params)
     rows.value = data.list as never
     total.value = data.total

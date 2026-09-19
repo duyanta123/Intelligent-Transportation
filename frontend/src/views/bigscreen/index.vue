@@ -111,15 +111,40 @@ let violationChart: echarts.ECharts | null = null
 let refreshTimer: number | null = null
 let clockTimer: number | null = null
 
-const kpis = computed(() => {
+/** KPI 数字滚动动画：每次数据刷新从当前显示值缓动到目标值 */
+const kpiDisplay = ref<number[]>([0, 0, 0, 0])
+const kpiTargets = computed(() => {
   const k = data.value?.kpi
-  return [
-    { label: '今日车流量', value: k ? Math.round(k.today_flow).toLocaleString() : '-', unit: 'pcu', color: '#38bdf8' },
-    { label: '平均车速', value: k ? k.avg_speed.toFixed(1) : '-', unit: 'km/h', color: '#4ade80' },
-    { label: '今日违章数', value: k ? String(k.violation_today) : '-', unit: '起', color: '#fbbf24' },
-    { label: '投诉待处理', value: k ? String(k.feedback_pending) : '-', unit: '件', color: '#f472b6' },
-  ]
+  return k ? [k.today_flow, k.avg_speed, k.violation_today, k.feedback_pending] : [0, 0, 0, 0]
 })
+const kpiFormatters: ((v: number) => string)[] = [
+  (v) => Math.round(v).toLocaleString(),
+  (v) => v.toFixed(1),
+  (v) => String(Math.round(v)),
+  (v) => String(Math.round(v)),
+]
+let tweenRaf: number | null = null
+function tweenKpis() {
+  if (tweenRaf) cancelAnimationFrame(tweenRaf)
+  const startVals = [...kpiDisplay.value]
+  const targets = kpiTargets.value
+  const t0 = performance.now()
+  const duration = 600
+  const step = (t: number) => {
+    const p = Math.min(1, (t - t0) / duration)
+    const eased = 1 - Math.pow(1 - p, 3)
+    kpiDisplay.value = startVals.map((s, i) => s + (targets[i] - s) * eased)
+    if (p < 1) tweenRaf = requestAnimationFrame(step)
+  }
+  tweenRaf = requestAnimationFrame(step)
+}
+
+const kpis = computed(() => [
+  { label: '今日车流量', value: kpiFormatters[0](kpiDisplay.value[0]), unit: 'pcu', color: '#38bdf8' },
+  { label: '平均车速', value: kpiFormatters[1](kpiDisplay.value[1]), unit: 'km/h', color: '#4ade80' },
+  { label: '今日违章数', value: kpiFormatters[2](kpiDisplay.value[2]), unit: '起', color: '#fbbf24' },
+  { label: '投诉待处理', value: kpiFormatters[3](kpiDisplay.value[3]), unit: '件', color: '#f472b6' },
+])
 
 /** 模拟城市边界 geoJSON（不接真实地图，仅用于坐标定位） */
 function buildCityGeoJson() {
@@ -278,6 +303,7 @@ async function loadData() {
     data.value = resp.data
     degraded.value = false
     renderCharts()
+    tweenKpis()
   } catch {
     degraded.value = true
   }
@@ -303,6 +329,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (tweenRaf) cancelAnimationFrame(tweenRaf)
   window.removeEventListener('resize', updateScale)
   if (refreshTimer) window.clearInterval(refreshTimer)
   if (clockTimer) window.clearInterval(clockTimer)

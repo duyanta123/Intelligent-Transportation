@@ -114,3 +114,31 @@ class TestEnterExit:
         assert client.get("/api/v1/parking-lots", headers=user_headers).status_code == 200
         # 普通用户不可看出入场记录列表
         assert client.get("/api/v1/parking-records", headers=user_headers).status_code == 403
+
+
+class TestRecordTimeFilter:
+    def test_enter_time_range_filter(self, client, admin_headers, db_session):
+        """入场时间范围筛选：仅返回范围内记录（上界含 1 秒缓冲）"""
+        from datetime import datetime, timedelta
+
+        from app.models import ParkingRecord
+
+        lot_id = _new_lot(client, admin_headers)
+        s = db_session
+        s.add(ParkingRecord(
+            parking_lot_id=lot_id, plate_no=_plate(),
+            enter_time=datetime.now() - timedelta(days=10), status="finished",
+        ))
+        s.add(ParkingRecord(
+            parking_lot_id=lot_id, plate_no=_plate(),
+            enter_time=datetime.now(), status="inside",
+        ))
+        s.commit()
+        start = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%S")
+        end = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        rows = client.get(
+            "/api/v1/parking-records",
+            headers=admin_headers,
+            params={"parking_lot_id": lot_id, "enter_start": start, "enter_end": end},
+        ).json()["data"]
+        assert rows["total"] == 1

@@ -33,6 +33,9 @@
             <el-select v-model="query.section_id" placeholder="全部路段" clearable filterable style="width: 200px">
               <el-option v-for="s in sections" :key="s.id" :label="s.name" :value="s.id" />
             </el-select>
+            <el-select v-model="compareIds" placeholder="路段对比（最多 4 条）" clearable multiple collapse-tags filterable :multiple-limit="4" style="width: 280px">
+              <el-option v-for="s in sections" :key="s.id" :label="s.name" :value="s.id" />
+            </el-select>
             <el-radio-group v-model="query.granularity">
               <el-radio-button value="hour">按小时</el-radio-button>
               <el-radio-button value="day">按天</el-radio-button>
@@ -42,7 +45,8 @@
             <span v-if="canReport" class="spacer" />
             <el-button v-if="canReport" type="success" plain @click="reportVisible = true">模拟上报</el-button>
           </div>
-          <v-chart :option="historyOption" style="height: 330px" autoresize />
+          <v-chart v-if="compareMode" :option="compareOption" style="height: 330px" autoresize />
+          <v-chart v-else :option="historyOption" style="height: 330px" autoresize />
           <el-pagination
             v-model:current-page="page"
             :page-size="size"
@@ -76,7 +80,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Download } from '@element-plus/icons-vue'
 import { downloadFile } from '@/api/download'
@@ -103,10 +107,41 @@ const size = ref(48)
 const total = ref(0)
 const query = reactive({ section_id: undefined as number | undefined, granularity: 'hour' })
 const historyRows = ref<{ time: string; avg_flow: number; max_flow: number; avg_speed: number }[]>([])
+const compareIds = ref<number[]>([])
+const compareSeries = ref<{ name: string; data: number[] }[]>([])
 const reportVisible = ref(false)
 const reportForm = reactive({ road_section_id: 0, flow: 20 })
 
 const levelType = (level: number) => (['success', '', 'warning', 'danger'] as const)[level] ?? 'info'
+
+const COMPARE_COLORS = ['#409eff', '#e6a23c', '#67c23a', '#f56c6c']
+
+// 对比路段变化时自动刷新（进入/退出对比模式均触发）
+watch(compareIds, () => {
+  page.value = 1
+  loadHistory()
+})
+
+const compareMode = computed(() => compareIds.value.length > 0)
+
+const compareOption = computed(() => ({
+  tooltip: { trigger: 'axis' },
+  legend: { data: compareSeries.value.map((s) => s.name) },
+  grid: { left: 55, right: 20, top: 40, bottom: 60 },
+  xAxis: { type: 'category', data: compareTimes.value.map((t) => (query.granularity === 'hour' ? t.slice(5, 16) : t.slice(0, 10))) },
+  yAxis: { type: 'value', name: 'pcu/h' },
+  dataZoom: [{ type: 'inside' }, { type: 'slider', height: 18, bottom: 8 }],
+  series: compareSeries.value.map((s, i) => ({
+    name: s.name,
+    type: 'line',
+    smooth: true,
+    showSymbol: false,
+    data: s.data,
+    itemStyle: { color: COMPARE_COLORS[i % COMPARE_COLORS.length] },
+  })),
+}))
+
+const compareTimes = ref<string[]>([])
 
 const historyOption = computed(() => ({
   tooltip: { trigger: 'axis' },
@@ -138,11 +173,32 @@ async function loadCongestion() {
 async function loadHistory() {
   loading.value = true
   try {
-    const params: Record<string, unknown> = { granularity: query.granularity, page: page.value, size: size.value }
-    if (query.section_id) params.road_section_id = query.section_id
-    const { data } = await fetchFlowHistory(params)
-    historyRows.value = data.list
-    total.value = data.total
+    if (compareMode.value) {
+      // 对比模式：并行拉取各选中路段的全量小时/天序列，按时间对齐叠加
+      const results = await Promise.all(
+        compareIds.value.map((id) =>
+          fetchFlowHistory({ road_section_id: id, granularity: query.granularity, page: 1, size: 400 }).then(
+            (resp) => ({ id, list: resp.data.list }),
+          ),
+        ),
+      )
+      const nameOf = (id: number) => sections.value.find((s) => s.id === id)?.name ?? `路段${id}`
+      const timeSet = new Set<string>()
+      results.forEach((r) => r.list.forEach((row) => timeSet.add(row.time)))
+      compareTimes.value = [...timeSet].sort()
+      compareSeries.value = results.map(({ id, list }) => {
+        const map = new Map(list.map((row) => [row.time, row.avg_flow]))
+        return { name: nameOf(id), data: compareTimes.value.map((t) => map.get(t) ?? null) }
+      })
+      total.value = compareTimes.value.length
+      historyRows.value = []
+    } else {
+      const params: Record<string, unknown> = { granularity: query.granularity, page: page.value, size: size.value }
+      if (query.section_id) params.road_section_id = query.section_id
+      const { data } = await fetchFlowHistory(params)
+      historyRows.value = data.list
+      total.value = data.total
+    }
   } finally {
     loading.value = false
   }

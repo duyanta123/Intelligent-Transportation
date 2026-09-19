@@ -1,5 +1,5 @@
 """智慧停车：停车场 CRUD、计费规则 CRUD、出入场与结算"""
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from sqlalchemy.orm import Session
@@ -51,46 +51,46 @@ def list_lots(db: Session = Depends(get_db), current_user: User = Depends(requir
 
 @router.post("/parking-lots")
 def create_lot(
-    body: ParkingLotIn, request: Request, _: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
+    body: ParkingLotIn, request: Request, admin_user: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
 ):
     lot = ParkingLot(**body.model_dump())
     db.add(lot)
     db.flush()
-    log_op(db, request, _, "新增", f"新增停车场：{lot.name}")
+    log_op(db, request, admin_user, "新增", f"新增停车场：{lot.name}")
     db.commit()
     return ok({"id": lot.id}, "创建成功")
 
 
 @router.put("/parking-lots/{item_id}")
 def update_lot(
-    item_id: int, body: ParkingLotIn, request: Request, _: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
+    item_id: int, body: ParkingLotIn, request: Request, admin_user: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
 ):
     lot = db.query(ParkingLot).filter(ParkingLot.id == item_id, ParkingLot.is_deleted == 0).first()
     if lot is None:
         raise BizError(*E_NOT_FOUND)
     for field, value in body.model_dump().items():
         setattr(lot, field, value)
-    log_op(db, request, _, "修改", f"修改停车场：{lot.name}")
+    log_op(db, request, admin_user, "修改", f"修改停车场：{lot.name}")
     db.commit()
     return ok(None, "更新成功")
 
 
 @router.delete("/parking-lots/{item_id}")
 def delete_lot(
-    item_id: int, request: Request, _: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
+    item_id: int, request: Request, admin_user: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
 ):
     lot = db.query(ParkingLot).filter(ParkingLot.id == item_id, ParkingLot.is_deleted == 0).first()
     if lot is None:
         raise BizError(*E_NOT_FOUND)
     lot.is_deleted = 1
-    log_op(db, request, _, "删除", f"删除停车场：{lot.name}（软删除）")
+    log_op(db, request, admin_user, "删除", f"删除停车场：{lot.name}（软删除）")
     db.commit()
     return ok(None, "删除成功")
 
 
 # ---------------- 计费规则 ----------------
 @router.get("/fee-rules")
-def list_fee_rules(_: User = Depends(require_roles("admin", "officer", "user")), db: Session = Depends(get_db)):
+def list_fee_rules(admin_user: User = Depends(require_roles("admin", "officer", "user")), db: Session = Depends(get_db)):
     rows = db.query(FeeRule).filter(FeeRule.is_deleted == 0).order_by(FeeRule.id).all()
     return ok(
         [
@@ -109,39 +109,39 @@ def list_fee_rules(_: User = Depends(require_roles("admin", "officer", "user")),
 
 @router.post("/fee-rules")
 def create_fee_rule(
-    body: FeeRuleIn, request: Request, _: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
+    body: FeeRuleIn, request: Request, admin_user: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
 ):
     rule = FeeRule(**body.model_dump())
     db.add(rule)
     db.flush()
-    log_op(db, request, _, "新增", f"新增计费规则：{rule.name}")
+    log_op(db, request, admin_user, "新增", f"新增计费规则：{rule.name}")
     db.commit()
     return ok({"id": rule.id}, "创建成功")
 
 
 @router.put("/fee-rules/{item_id}")
 def update_fee_rule(
-    item_id: int, body: FeeRuleIn, request: Request, _: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
+    item_id: int, body: FeeRuleIn, request: Request, admin_user: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
 ):
     rule = db.query(FeeRule).filter(FeeRule.id == item_id, FeeRule.is_deleted == 0).first()
     if rule is None:
         raise BizError(*E_NOT_FOUND)
     for field, value in body.model_dump().items():
         setattr(rule, field, value)
-    log_op(db, request, _, "修改", f"修改计费规则：{rule.name}")
+    log_op(db, request, admin_user, "修改", f"修改计费规则：{rule.name}")
     db.commit()
     return ok(None, "更新成功")
 
 
 @router.delete("/fee-rules/{item_id}")
 def delete_fee_rule(
-    item_id: int, request: Request, _: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
+    item_id: int, request: Request, admin_user: User = Depends(require_roles("admin")), db: Session = Depends(get_db)
 ):
     rule = db.query(FeeRule).filter(FeeRule.id == item_id, FeeRule.is_deleted == 0).first()
     if rule is None:
         raise BizError(*E_NOT_FOUND)
     rule.is_deleted = 1
-    log_op(db, request, _, "删除", f"删除计费规则：{rule.name}（软删除）")
+    log_op(db, request, admin_user, "删除", f"删除计费规则：{rule.name}（软删除）")
     db.commit()
     return ok(None, "删除成功")
 
@@ -251,7 +251,9 @@ def list_records(
     plate_no: str = Query(""),
     parking_lot_id: int | None = Query(None),
     status: str = Query(""),
-    _: User = Depends(require_roles("admin", "officer")),
+    enter_start: datetime | None = Query(None, description="入场时间起"),
+    enter_end: datetime | None = Query(None, description="入场时间止"),
+    admin_user: User = Depends(require_roles("admin", "officer")),
     db: Session = Depends(get_db),
 ):
     page, size = clamp_page(page, size)
@@ -262,6 +264,11 @@ def list_records(
         query = query.filter(ParkingRecord.parking_lot_id == parking_lot_id)
     if status:
         query = query.filter(ParkingRecord.status == status)
+    if enter_start:
+        query = query.filter(ParkingRecord.enter_time >= enter_start)
+    if enter_end:
+        # DATETIME 秒级四舍五入竞态：上界预留 1 秒缓冲
+        query = query.filter(ParkingRecord.enter_time <= enter_end + timedelta(seconds=1))
     total = query.count()
     rows = query.order_by(ParkingRecord.id.desc()).offset((page - 1) * size).limit(size).all()
     lots = {lot.id: lot.name for lot in db.query(ParkingLot).all()}
