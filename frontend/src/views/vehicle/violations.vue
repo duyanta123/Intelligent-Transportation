@@ -6,8 +6,13 @@
         <el-select v-model="query.violation_type" placeholder="违章类型" clearable style="width: 170px">
           <el-option v-for="t in typeCodes" :key="t" :label="t" :value="t" />
         </el-select>
-        <el-select v-model="query.status" placeholder="状态" clearable style="width: 130px">
-          <el-option v-for="(name, key) in statusNames" :key="key" :label="name" :value="key" />
+        <el-select v-model="query.status" placeholder="状态" clearable style="width: 150px">
+          <el-option
+            v-for="(name, key) in statusNames"
+            :key="key"
+            :label="`${name}${statusCounts[key] !== undefined ? ` (${statusCounts[key]})` : ''}`"
+            :value="key"
+          />
         </el-select>
         <el-button type="primary" :icon="Search" @click="load">查询</el-button>
         <span class="spacer" />
@@ -103,6 +108,7 @@ import { fetchViolations, createViolation, auditViolation, processViolation, fet
 import { fetchIntersections } from '@/api/traffic'
 import { uploadImage } from '@/api/dashboard'
 import { downloadFile } from '@/api/download'
+import http from '@/api/http'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
@@ -115,6 +121,7 @@ const loading = ref(false)
 const typeCodes = ref<string[]>([])
 const intersections = ref<Record<string, unknown>[]>([])
 const statusNames: Record<string, string> = { pending: '待审核', confirmed: '已确认', rejected: '已驳回', processed: '已处理' }
+const statusCounts = ref<Record<string, number>>({})
 const query = reactive({ plate_no: '', violation_type: '', status: '' })
 
 const createVisible = ref(false)
@@ -196,6 +203,13 @@ async function markProcessed(row: Record<string, unknown>) {
 
 onMounted(async () => {
   await load()
+  // 状态计数徽标（失败不影响页面）
+  try {
+    const { data: counts } = await http.get('/violations/stats')
+    statusCounts.value = counts
+  } catch {
+    /* 忽略 */
+  }
   const { data: types } = await fetchViolationTypes()
   for (const t of types) {
     if (typeof t.code === 'string') {

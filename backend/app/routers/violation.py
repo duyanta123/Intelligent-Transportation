@@ -2,7 +2,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query, Request
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_db, require_roles
@@ -143,6 +143,23 @@ def delete_vehicle(
 
 
 # ---------------- 违章 ----------------
+@router.get("/violations/stats")
+def violation_stats(
+    current_user: User = Depends(require_roles("admin", "officer")),
+    db: Session = Depends(get_db),
+):
+    """按状态统计违章数量（供管理页 Tab 徽标）"""
+    rows = (
+        db.query(Violation.status, func.count(Violation.id))
+        .filter(Violation.is_deleted == 0)
+        .group_by(Violation.status)
+        .all()
+    )
+    counts = {status: int(c) for status, c in rows}
+    return ok({**counts, "total": sum(counts.values())})
+
+
+
 @router.get("/violations")
 def list_violations(
     page: int = Query(1, ge=1),

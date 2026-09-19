@@ -3,13 +3,14 @@ import logging
 import os
 from datetime import datetime
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
+from app.core.deps import get_db
 from app.core.response import E_SYSTEM, E_VALIDATION, BizError, fail, ok
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -87,9 +88,28 @@ app.include_router(admin.router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health", tags=["系统"])
-def health():
-    """健康检查（部署监控/验收用）"""
-    return ok({"status": "up", "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
+def health(db=Depends(get_db)):
+    """健康检查：应用 + MySQL + Redis 连通状态（部署监控/验收用）"""
+    mysql_ok = True
+    try:
+        db.execute(__import__("sqlalchemy").text("SELECT 1"))
+    except Exception:
+        mysql_ok = False
+    redis_ok = True
+    try:
+        from app.core.redis_client import get_redis
+
+        get_redis().ping()
+    except Exception:
+        redis_ok = False
+    return ok(
+        {
+            "status": "up" if mysql_ok and redis_ok else "degraded",
+            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "mysql": "ok" if mysql_ok else "down",
+            "redis": "ok" if redis_ok else "down",
+        }
+    )
 
 
 @app.on_event("startup")
