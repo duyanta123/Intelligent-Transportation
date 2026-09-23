@@ -6,6 +6,7 @@
 #   bash scripts/setup_remote.sh --protect    # 推送后再开启 main 分支保护（需首次 CI 已跑完）
 #
 # 可用环境变量覆盖：BOOTSTRAP_BRANCH / REMOTE / TARGET_BRANCH / REPO
+# REMOTE 既可以是 remote 名（默认 origin），也可以直接给完整 URL
 set -euo pipefail
 
 BRANCH="${BOOTSTRAP_BRANCH:-chore/ci-bootstrap}"
@@ -20,20 +21,29 @@ if ! git rev-parse --verify --quiet "$BRANCH" >/dev/null; then
   exit 1
 fi
 
-if ! git remote get-url "$REMOTE" >/dev/null 2>&1; then
-  echo "[FAIL] 没有配置远端 $REMOTE，先执行：git remote add origin https://github.com/$REPO.git" >&2
-  exit 1
-fi
+case "$REMOTE" in
+  *"://"*|*@*:*)
+    REMOTE_URL="$REMOTE"
+    USING_URL=1
+    ;;
+  *)
+    if ! REMOTE_URL="$(git remote get-url "$REMOTE" 2>/dev/null)"; then
+      echo "[FAIL] 没有配置远端 $REMOTE，先执行：git remote add origin https://github.com/$REPO.git" >&2
+      exit 1
+    fi
+    USING_URL=0
+    ;;
+esac
 
-echo "即将推送：$BRANCH → $REMOTE/$TARGET"
+echo "即将推送：$BRANCH → $TARGET（远端：$REMOTE_URL）"
 git --no-pager log -1 --format='  提交：%h %s' "$BRANCH"
 echo "  文件清单（应只有自动化相关内容，不含 backend/ frontend/ sql/ 等项目主体）："
-git --no-pager ls-tree -r --name-only "$BRANCH" | sed 's/^/    /'
+git --no-pager ls-tree -r --name-only "$BRANCH"
 
 echo
 echo "检查远端 $TARGET 是否已有提交……"
 set +e
-git ls-remote --exit-code --heads "$REMOTE" "$TARGET" >/dev/null 2>&1
+git ls-remote --exit-code --heads "$REMOTE_URL" "$TARGET" >/dev/null 2>&1
 probe=$?
 set -e
 case "$probe" in
@@ -46,12 +56,16 @@ case "$probe" in
     echo "远端 $TARGET 为空，可以推送。"
     ;;
   *)
-    echo "[FAIL] 无法访问远端 $REMOTE（网络/凭据问题，退出码 $probe）：先解决连通性（或代理）再推送。" >&2
+    echo "[FAIL] 无法访问远端 $REMOTE_URL（网络/凭据问题，退出码 $probe）：先解决连通性（或代理）再推送。" >&2
     exit 1
     ;;
 esac
 
-git push -u "$REMOTE" "$BRANCH:$TARGET"
+if [ "$USING_URL" = "1" ]; then
+  git push "$REMOTE_URL" "$BRANCH:$TARGET"
+else
+  git push -u "$REMOTE" "$BRANCH:$TARGET"
+fi
 
 echo
 echo "推送完成。接下来："
