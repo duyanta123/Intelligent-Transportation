@@ -28,7 +28,7 @@ jobs:
 
       # 个人账号免费；组织账号需在仓库 Secrets 中配置 GITLEAKS_LICENSE
       - name: gitleaks 扫描
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_CONFIG: .gitleaks.toml
