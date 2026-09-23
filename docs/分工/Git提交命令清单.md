@@ -50,6 +50,14 @@ git push --force-with-lease          # 只能对自己 feature 分支用，禁�
 git clone https://github.com/duyanta123/Intelligent-Transportation.git smart-traffic
 cd smart-traffic
 
+# 【先做这一步】远端 main 目前只有 CI 骨架（自动化文件），项目主体代码在组长发的「源码交接包」里：
+#   1) 把交接包解压到临时目录（例如 D:\smart-traffic-源码包）；
+#   2) 把其中的项目主体拷进刚 clone 出来的目录：backend/ frontend/ sql/ docs/ README.md AGENTS.md .gitignore；
+#   3) 别覆盖这些自动化文件（以远端 main 上的为准，交接包里的版本可能偏旧）：
+#      .github/  .gitattributes  .gitleaks.toml  scripts/ci_check.py
+#      scripts/precheck.py  scripts/setup_remote.sh  scripts/remote-branch-protection.json
+#   4) 拷完后 git status 会列出大量未跟踪文件，这是正常的：你只 add 自己那一批（见本文各批次的 git add 清单）。
+
 git config user.name  "你的姓名"                 # ← 把 你的姓名 换成自己的真实姓名（例：郭佳豪）
 git config user.email "你的GitHub邮箱"           # ← 把 你的GitHub邮箱 换成自己账号已验证邮箱或 noreply 地址
 
@@ -77,16 +85,25 @@ mysql -uroot -p smart_traffic < sql/seed.sql
 ### 批次 ① 基建（分支 `feature/p1-scaffold`）
 
 ```powershell
-# 首次推送（仓库还没有 main 时，由你做初始化提交）
+# 远端 main 已有 CI 骨架，从它切分支即可
+git checkout main; git pull origin main
 git checkout -b feature/p1-scaffold
-git add backend/app/core backend/app/utils backend/app/models backend/app/schemas backend/app/main.py `
-        backend/requirements.txt backend/tests/conftest.py `
+git add backend/app/__init__.py backend/app/core backend/app/utils backend/app/models backend/app/schemas backend/app/main.py `
+        backend/app/routers/__init__.py backend/app/services/__init__.py `
+        backend/pyproject.toml backend/.env.example backend/uploads/.gitkeep `
+        backend/tests/conftest.py `
         sql/init.sql scripts/gen_seed.py `
         docs/PROGRESS.md AGENTS.md .gitignore
 git commit -m "chore: 工程骨架（core/公共工具/ORM 模型/统一响应与错误码/建表脚本）"
-# 可再拆第二条：git commit -m "chore: 配置与安全基线（.env.example/JWT 兜底/Redis RESP2）"
+# 可再拆第二条：git commit -m "chore: 配置与安全基线（pyproject 规则/`.env.example`/JWT 兜底）"
 git push -u origin feature/p1-scaffold
 ```
+
+> ⚠️ **本批故意不含 `backend/requirements.txt`**：它一入库，CI 的 `detect` 作业就判定"后端已就位"，
+> 立刻跑 `ruff check .` + `pytest -q`，而此刻仓库里还没有任何测试用例（pytest 以"未收集到用例"退出码 5 失败）→ 门禁必红。
+> 它和前端 `package.json`/`package-lock.json` 一起挪到**批次⑪ 工程化收口**提交。
+> 但 `backend/pyproject.toml` 必须在**本批**入库：它是 ruff 的规则配置（行长 140、豁免项）与 pytest 配置，
+> 缺了它到⑪跑 lint 时会退回默认 88 列规则，满屏 E501。
 
 验收（必须全绿再 push）：
 
@@ -106,6 +123,10 @@ git add backend/app/routers/auth.py backend/app/routers/system.py backend/app/ro
         backend/app/services/auth_service.py backend/app/services/oplog.py `
         backend/app/schemas/__init__.py `
         backend/tests/test_auth.py backend/tests/test_service.py `
+        frontend/index.html frontend/vite.config.ts frontend/tsconfig.json frontend/eslint.config.js `
+        frontend/.env.example frontend/src/main.ts frontend/src/App.vue frontend/src/env.d.ts `
+        frontend/src/api/auth.ts frontend/src/types/api.ts `
+        frontend/src/utils/algorithms.ts frontend/src/utils/async.ts frontend/src/utils/datetime.ts `
         frontend/src/stores frontend/src/api/http.ts frontend/src/router `
         frontend/src/views/login frontend/src/views/layout frontend/src/views/system
 git commit -m "feat(认证): 验证码+注册+登录（失败锁定）+JWT 黑名单与改密吊销"
@@ -115,6 +136,8 @@ git push -u origin feature/p1-auth
 ```
 
 > 注意：`backend/tests/test_service.py` 里有 3 例 `TestAdminStats`（你的），其余公告/反馈/大屏用例属左栋升——你提交文件骨架时带上这 3 例即可，左栋升后续追加。
+> 前端工程基座（`index.html`、`vite.config.ts`、`tsconfig.json`、`eslint.config.js`、`src/main.ts`、`src/App.vue`、`src/env.d.ts`、公共 `utils`/`types`）随本批首次入库；
+> `frontend/package.json` 与 `package-lock.json` 同样留到批次⑪，否则 CI 会在前端还没写全时就开始 `npm ci` + `build`。
 
 验收：
 
@@ -332,7 +355,7 @@ cd ..\frontend; npm run test; npx eslint src tests; npm run build
 ```powershell
 git checkout main; git pull origin main
 git checkout -b feature/p5-delivery
-git add start.bat stop.bat reset-db.bat demo.md sql/seed.sql scripts/gen_seed.py README.md
+git add start.bat stop.bat reset-db.bat docs/demo.md sql/seed.sql scripts/gen_seed.py README.md
 git commit -m "chore(交付): 一键启停/重置脚本 + 演示动线与种子刷新"
 git push -u origin feature/p5-delivery
 ```
@@ -342,8 +365,36 @@ git push -u origin feature/p5-delivery
 ```powershell
 .\start.bat                 # 浏览器自动打开登录页
 .\reset-db.bat              # 要 data 还原到种子状态
-# 按 demo.md 走一遍 8 分钟动线
+# 按 docs/demo.md 走一遍 8 分钟动线
 ```
+
+---
+
+### 批次 ⑪ 工程化收口（分支 `feature/p1-integration`，全组最后一批）
+
+> 这一批补上**会触发 CI 全量检查的"开关文件"**。在它之前，CI 的后端/前端作业始终按 `skipped`
+> 处理（`detect` 作业判定"这部分还没到"），所以前面每批都能保持全绿；本批入库后 CI **首次全量跑**：
+> `ruff` + `pytest`（起 MySQL 8.0 / Redis 5 容器）+ `npm ci` + `eslint` + `vitest` + `build`。
+
+```powershell
+git checkout main; git pull origin main
+git checkout -b feature/p1-integration
+git add backend/requirements.txt frontend/package.json frontend/package-lock.json
+git commit -m "chore(基建): 补依赖清单，启用后端/前端全量门禁"
+git push -u origin feature/p1-integration
+```
+
+验收（先在干净目录 clone 一遍再跑，避免"本机脏环境能过、别人拉下来过不了"）：
+
+```powershell
+cd backend
+.\venv\Scripts\python.exe -m ruff check .
+.\venv\Scripts\python.exe -m pytest -q            # 期望 119 passed
+cd ..\frontend; npm ci; npm run lint; npm run test; npm run build
+```
+
+> 本批 PR 必须等 CI 的后端、前端作业**真正跑过且全绿**（不再是 skipping）才合并。
+> 若本批红，说明前面某批漏了文件或代码不完整——按日志补齐后重推，**不要**用跳过检查的方式绕过。
 
 ---
 
@@ -361,13 +412,14 @@ git push -u origin feature/p5-delivery
 | ⑧ 测试 | 全组 | feature/p{N}-tests → p1-test-hardening | ☐ | | |
 | ⑨ 文档 | 陈硕 | feature/p1-docs | ☐ | | |
 | ⑩ 一键交付 | 左栋升 | feature/p5-delivery | ☐ | | |
+| ⑪ 工程化收口 | 陈硕 | feature/p1-integration | ☐ | | |
 
 ---
 
 ## 8. 红线与常见问题
 
 - **绝不 force push `main`**；`main` 只通过 PR 合入；
-- **GitHub 分支保护（陈硕配置一次）**：仓库 → Settings → Branches → Add branch protection rule → 分支名填 `main` → 勾选：**Require a pull request before merging**（Approvals 建议 1）、**Require branches to be up to date before merging**（重要）、可选 **Do not allow bypassing the above settings** → 保存。新版界面在 Settings → Rules → Rulesets 同义配置。
+- **GitHub 分支保护（已完成——2026-09-23 由陈硕配置为规则集 Rulesets，无需你再操作）**：`main` 已强制 **Require PR（1 人批准）** + 必选检查 **「CI 全部通过」「密钥泄露扫描」** + **分支须与 main 同步（up to date）** + 禁强推/禁删分支，且管理员同样不能绕过。你只需保证 push 前按第 0 节同步过 main。
 - **为什么必须勾 up to date**：并行批次改共享文件时，若分支落后于 main 仍允许合并，Git 不报冲突但后合者会**覆盖**先合者的改动（静默丢代码）。勾上后分支必须先同步 main 才可合并，配合第 0 节《提 PR 前必做：同步 main》操作使用。
 - **注意**：免费私有仓库可能不提供分支保护，此时把仓库设为 Public，或用"口头约定 + 每次 push 前 `git pull`"兜底；Approvals=1 时陈硕自己的 PR 无法自批，需组员互批或临时取消该勾选。
 - 提交前 `git status` 检查，**不要把 `backend/.env`、`backend/uploads/*`、`node_modules`、`venv` 提交进去**（`.gitignore` 已挡，但 `git add -A` 前仍确认一次）；
