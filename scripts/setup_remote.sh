@@ -97,7 +97,22 @@ case "$probe" in
         echo "  骨架是独立根提交，推送时会先接到远端 $TARGET 之上（保留远端历史），再快进推送。"
       else
         echo "  骨架是独立根提交，正在接到远端 $TARGET 之上（保留远端历史）……"
-        tree="$(git rev-parse "$BRANCH^{tree}")"
+        # 新树 = 骨架的 12 个文件 + 远端独有文件（同名文件以骨架版本为准），保证不误删远端已有内容
+        idx_file="$(git rev-parse --git-dir)/st-bootstrap-index.$$"
+        rm -f "$idx_file"
+        GIT_INDEX_FILE="$idx_file" git read-tree "$BRANCH"
+        while IFS= read -r -d '' entry; do
+          path="${entry#*$'\t'}"
+          if ! git cat-file -e "$BRANCH:$path" 2>/dev/null; then
+            mode="${entry%% *}"
+            rest="${entry#* }"
+            sha="${rest#* }"
+            sha="${sha%%$'\t'*}"
+            GIT_INDEX_FILE="$idx_file" git update-index --add --cacheinfo "$mode,$sha,$path"
+          fi
+        done < <(git ls-tree -r -z "$remote_head")
+        tree="$(GIT_INDEX_FILE="$idx_file" git write-tree)"
+        rm -f "$idx_file"
         message="$(git log -1 --format=%B "$BRANCH")"
         old_commit="$(git rev-parse "$BRANCH")"
         new_commit="$(git commit-tree "$tree" -p "$remote_head" -m "$message")"
