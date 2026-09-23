@@ -27,7 +27,7 @@ jobs:
       frontend: ${{ steps.check.outputs.frontend }}
     steps:
       - name: 拉取代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # 项目主体按批次提交：骨架阶段的 main 里可能还没有 backend/ 或 frontend/，
       # 此时对应作业按"跳过"处理并给出 notice，避免门禁在"还没到那一批"时假红
@@ -56,7 +56,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: 拉取代码（需要全部历史来校验提交信息）
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -133,7 +133,7 @@ jobs:
       MOCK_DATA_ENABLED: "false"
     steps:
       - name: 拉取代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 安装 Python 3.13
         uses: actions/setup-python@v7
@@ -198,7 +198,7 @@ jobs:
         working-directory: frontend
     steps:
       - name: 拉取代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: 安装 Node 22
         uses: actions/setup-node@v4
