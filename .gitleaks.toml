@@ -1,0 +1,19 @@
+# gitleaks 配置：在默认规则集基础上放行"示例性质"的文件与测试值
+# 真实密钥一律不入库（.env 已被 .gitignore 忽略）；模板、课程文档中的示例值，
+# 以及 CI 一次性容器里的测试凭据不算泄露。
+[extend]
+useDefault = true
+
+[allowlist]
+description = "模板、文档与 CI 临时容器中的示例/测试值"
+paths = [
+  '''\.env\.example$''',
+  '''^docs/''',
+  '''^README\.md$''',
+  '''^demo\.md$''',
+]
+# CI 工作流里的临时 MySQL/JWT 凭据：只在一次性 runner 内使用，不是真实密钥
+regexes = [
+  '''ci-only-secret-please-do-not-reuse-0123456789''',
+  '''ci-root-pwd''',
+]
