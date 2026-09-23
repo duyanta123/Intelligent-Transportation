@@ -19,6 +19,8 @@ smart-traffic/
 ├── frontend/           # Vue3 + Vite + TS 前端（src/views|api|stores|components）
 ├── docs/               # 课程文档：01需求 02设计 03数据库 04测试报告 05部署手册；另含 PROGRESS.md 进度台账
 ├── sql/                # init.sql（建库建表）+ seed.sql（种子数据）
+├── .github/            # CI 门禁/安全扫描/PR 模板/CODEOWNERS（详见 docs/分工/06-自动化检查与CI门禁.md）
+├── scripts/            # 工具脚本：ci_check.py（仓库自检）、precheck.py（一键自检）、gen_seed.py
 ├── .env.example        # 配置模板（键名固定，以《智慧交通-项目开发Prompt.md》附录 E 为准；真实 .env 不入库）
 ├── .gitignore          # 忽略 .env / venv / node_modules / dist / uploads / logs / 模型缓存等
 ├── start.bat / stop.bat# 一键启停脚本
@@ -63,6 +65,10 @@ npm run build                                    # 构建验证
 
 # Redis 连通性
 "C:/Program Files/Redis/redis-cli.exe" ping      # 期望 PONG
+
+# 提交前自检（与 GitHub Actions 门禁同口径，五人均可执行）
+python scripts/precheck.py --guard-only   # 秒级：仓库卫生 + 提交信息格式
+python scripts/precheck.py                # 全量：仓库自检 + ruff + pytest + eslint + vitest + build
 ```
 
 ## 5. 编码规范
@@ -74,7 +80,7 @@ npm run build                                    # 构建验证
 - 所有表带 `id`/`created_at`/`updated_at`，删除一律软删除 `is_deleted`，禁止物理 DELETE 业务数据
 - **时区**：全链路 Asia/Shanghai 本地时间，数据库一律 DATETIME，禁止 UTC 与本地时间混用（防止 8 小时偏差）
 - 计费、配时（Webster）、拥堵分级三个核心算法必须配单元测试且为纯函数（输入输出明确，不碰数据库）
-- **Git**：提交信息格式 `type(scope): 简体中文描述`（type ∈ feat/fix/docs/test/chore/refactor）；禁止提交 `.env`、`venv/`、`node_modules/`、`uploads/`、模型缓存
+- **Git**：提交信息格式 `type(scope): 简体中文描述`（type ∈ feat/fix/docs/test/chore/refactor）；禁止提交 `.env`、`venv/`、`node_modules/`、`uploads/`、模型缓存；格式与入库路径由 CI 自动校验（见第 8 节第 8 条）
 
 ## 6. 安全与配置红线
 
@@ -109,3 +115,4 @@ npm run build                                    # 构建验证
 5. 阶段性任务结束输出：做了什么、验证结果、遗留问题
 6. 每个 Phase 结束必须更新 `docs/PROGRESS.md`（当前 Phase / 完成项 / 验证证据 / 遗留问题 / 下一步），供跨会话续作恢复上下文
 7. 提交前 `git status` 确认无 `.env`、`venv/`、`node_modules/` 等误入仓库
+8. 推分支/开 PR 后确认 GitHub Actions「CI 门禁」四项全绿（仓库卫生与提交规范 / 后端 lint + 测试 / 前端 lint + 测试 + 构建 / CI 全部通过）；PR 描述按 `.github/PULL_REQUEST_TEMPLATE.md` 填自检证据；合入 `main` 前必须有 1 人评审（详见 `docs/分工/06-自动化检查与CI门禁.md`）

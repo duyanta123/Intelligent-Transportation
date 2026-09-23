@@ -1,0 +1,5 @@
+# 行尾策略（显式声明，避免各成员 autocrlf 配置不同导致 .bat 在别人机器上跑不起来）
+# 实测结论见 AGENTS.md 第 7 节：cmd 要求 .bat 为 CRLF + UTF-8 无 BOM，且第二行 chcp 65001 >nul
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf

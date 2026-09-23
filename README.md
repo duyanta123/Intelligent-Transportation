@@ -10,6 +10,8 @@
 ![Redis](https://img.shields.io/badge/Redis-5-DC382D?logo=redis&logoColor=white)
 ![pytest](https://img.shields.io/badge/pytest-119%20passed-0A9EDC?logo=pytest&logoColor=white)
 ![vitest](https://img.shields.io/badge/vitest-18%20passed-6E9F18?logo=vitest&logoColor=white)
+![CI 门禁](https://github.com/duyanta123/Intelligent-Transportation/actions/workflows/ci.yml/badge.svg)
+![安全扫描](https://github.com/duyanta123/Intelligent-Transportation/actions/workflows/security.yml/badge.svg)
 
 ## 项目简介
 
@@ -108,7 +110,27 @@ smart-traffic/
 - **分工文档**：`docs/分工/00-分工总览.md`（接口契约/批次计划/协作规范）+ 五份成员开发文档（01-05），每份含需求→设计→编码→测试→验收全流程；
 - **远端仓库**：<https://github.com/duyanta123/Intelligent-Transportation>（`main` 保持可运行；五人均以本人 GitHub 账号提交）；
 - **提交方式**：按 **10 个批次**（基建 → 认证权限 → 交通 → 违章 → 停车+LPR → 公众服务 → 大屏 → 测试 → 文档 → 一键交付）分阶段推送，每批一个可运行状态；
-- **分支规范**：`feature/p{成员号}-{模块}` + PR 合入 `main`，详细操作见 `docs/分工/00-分工总览.md` 第 6.5 节。
+- **分支规范**：`feature/p{成员号}-{模块}` + PR 合入 `main`，详细操作见 `docs/分工/00-分工总览.md` 第 6.5 节；
+- **自动化审查**：PR 触发 GitHub Actions 门禁（仓库卫生/提交规范 + 后端 lint·pytest + 前端 lint·vitest·build + gitleaks 密钥扫描），全绿才能合并；本地同口径自检 `python scripts/precheck.py`，说明见 `docs/分工/06-自动化检查与CI门禁.md`。
+
+## 自动化检查（CI 门禁）
+
+| 检查 | 内容 | 效果 |
+|---|---|---|
+| 仓库卫生（`repo-guard`） | 禁止 `.env`/`venv`/`node_modules`/`uploads`/模型等入库、单文件 >5MB、硬编码密钥、`.bat` 编码（CRLF+无 BOM）、配置项与 `.env.example` 对账、提交信息 `type(scope): 描述` | 不合规直接拦下，不允许合并 |
+| 后端（`backend`） | `ruff check .` + `pytest -q`（CI 内起 MySQL 8.0 与 Redis 5 容器，独立测试库） | 119 个用例必须在干净环境全绿 |
+| 前端（`frontend`） | `npm ci` + `eslint` + `vitest` + `vite build` | 保证 `main` 随时可运行 |
+| 安全（`security.yml`） | gitleaks 全历史密钥扫描（阻断）+ pip-audit / npm audit（每周一定时提示） | 密钥永不入库 |
+
+本地自检（推之前跑一遍，与 CI 同口径）：
+
+```bash
+python scripts/precheck.py --guard-only   # 秒级：仓库卫生 + 提交信息
+python scripts/precheck.py                # 全量：与 CI 门禁相同的四组命令
+```
+
+一次性远端配置（分支保护、评审人）见 `docs/分工/06-自动化检查与CI门禁.md`。
+
 ## 核心算法参数（附录 D 统一口径）
 
 - **Webster**：s=1800 pcu/h/车道；每相位损失 6s；`C0=(1.5L+5)/(1−Y)` 钳制 [40,180]s；绿灯按流量比分配、最短 15s；Y≥0.95 过饱和按上限输出

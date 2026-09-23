@@ -1,0 +1,21 @@
+# 代码评审自动指派：GitHub 会按此文件自动请求对应负责人评审
+# 说明：@duyanta123 为仓库 owner（组长陈硕）；其余成员拿到 GitHub 账号后，
+# 把对应模块的负责人改成本人账号即可（分工表见 docs/分工/00-分工总览.md 第 6.5 节）
+
+# 仓库配置与自动化脚本：由组长把关
+/.github/                @duyanta123
+/AGENTS.md               @duyanta123
+/scripts/                @duyanta123
+
+# 共享文件（分工总览第 4 节：禁止私自大改，改动先提 PR 由组长合并）
+/backend/app/main.py                 @duyanta123
+/backend/app/core/                   @duyanta123
+/backend/app/models/                 @duyanta123
+/backend/app/schemas/                @duyanta123
+/frontend/src/router/index.ts        @duyanta123
+/frontend/src/api/http.ts            @duyanta123
+/frontend/src/styles/global.css      @duyanta123
+
+# 建库建表脚本与课程文档
+/sql/                    @duyanta123
+/docs/                   @duyanta123

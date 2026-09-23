@@ -6,7 +6,7 @@
 ## 当前状态
 
 - **当前 Phase**：全部 7 个 Phase 完成（可交付 / 可答辩）；2026-09-20 完成一轮「安全 + Bug」专项审查与修复（见下方「安全审查修复记录」）
-- **最近更新**：2026-09-23（新增「五人分工与协作」：docs/分工 六份文档 + 10 批次 Git 交付方案）
+- **最近更新**：2026-09-23（① 新增「五人分工与协作」：docs/分工 六份文档 + 10 批次 Git 交付方案；② 新增「自动化检查与 CI 门禁」：`.github` 流水线 + `scripts` 本地/远程同口径自检）
 - **服务状态**：后端 8000 / 前端 5173，可用 `start.bat` 一键拉起
 
 ## 安全审查修复记录（2026-09-20，全量回归通过）
@@ -53,11 +53,40 @@
 ## 五人分工与协作（2026-09-23）
 
 - **分工文档（新增，README 已挂链接）**：`docs/分工/00-分工总览.md`（五人分工总表/模块-人员映射/54 接口契约/18 表归属/统一规范/Git 协作与分批次方案）+ 五份成员文档 `01-陈硕-项目基建与认证权限.md`、`02-郭佳豪-路口信号与路况监测.md`、`03-程靖超-车辆与违章管理.md`、`04-李嘉诚-智慧停车与车牌识别.md`、`05-左栋升-公众服务与数据大屏及交付.md`；
-- **远端仓库**：<https://github.com/duyanta123/Intelligent-Transportation>（本地 `.git` 已建、尚无 remote/提交，等待第一批推送）；
+- **远端仓库**：<https://github.com/duyanta123/Intelligent-Transportation>（本地 `.git` 已建、`origin` 已配置；推送需在能访问 github.com 的网络环境执行）；
 - **命令清单**：`docs/分工/Git提交命令清单.md`（五人各自的分支+提交+验收+PR 全流程，含 10 批次逐批 `git add` 清单）；
 - **提交策略**：五名成员各用自己的 GitHub 账号提交（author 由本地 `user.name/user.email` 决定，需匹配账号邮箱）；按 **10 个批次**分阶段推送，每批一个可运行状态：①基建(陈硕) ②认证权限(陈硕) ③交通(郭佳豪) ④违章(程靖超) ⑤停车+LPR(李嘉诚) ⑥公众服务(左栋升) ⑦大屏(左栋升) ⑧测试(全组) ⑨文档(陈硕统稿) ⑩一键交付(左栋升)；
 - **联动关系**：③④⑤⑥ 依赖 ①② 已合入 `main`；⑦ 依赖 ③（流量数据）与 ⑤（停车占用）；⑧⑨⑩ 在各业务批次合并后收口；共用文件（`utils/validators.py` 等）改动先后见各成员文档"分批次提交清单"；
 - **本轮验证**：`pytest` **119 passed**（实测 32.59s）；vitest 18 例静态核对通过（本次审查环境 spawn 受限，未现场复跑）；6 份分工文档代码块全部配平、36 处行数标注与实现一致、数字与代码逐项对账。
+
+## 自动化检查与 CI 门禁（2026-09-23）
+
+- **目标**：五人在线协作时，把《00-分工总览》第 6.5 节的"每批必过门槛"从"各自跑一遍"变成**远程强制关口**——PR 不全绿不许合入 `main`。
+- **新增文件**：
+  - `.github/workflows/ci.yml`：`repo-guard`（仓库卫生 + 提交信息）、`backend`（ruff + pytest；CI 内起 MySQL 8.0 / Redis 5 服务容器，独立测试库 `smart_traffic_test`）、`frontend`（npm ci + eslint + vitest + build）、`ci-gate`（汇总为唯一必选检查「CI 全部通过」）；
+  - `.github/workflows/security.yml`：gitleaks 密钥扫描（阻断；另含每周一 06:00 定时全量）+ pip-audit / npm audit（仅提示不阻断）；
+  - `.gitleaks.toml`：放行模板与课程文档中的示例值（真实密钥仍会拦下）；
+  - `.github/PULL_REQUEST_TEMPLATE.md`：PR 必填自检证据 / 影响面 / 回滚方式（对齐 AGENTS.md 第 8 节）；
+  - `.github/CODEOWNERS`：共享文件、`sql/`、`docs/`、`.github/`、`scripts/` 自动指派组长评审；
+  - `.github/dependabot.yml`：pip / npm 每周一 09:30、GitHub Actions 每月自动提升级 PR（提交信息 `chore(deps)`，同样过门禁）；
+  - `scripts/ci_check.py`：本地与 CI 共用的仓库卫生规则（禁止入库路径 / 单文件 5MB / 硬编码密钥 / `.bat` 编码 CRLF+无 BOM+`chcp 65001` / 配置项与 `.env.example` 对账 / 提交信息格式），带 `--self-test` 规则自测；
+  - `scripts/precheck.py`：一键自检（`--guard-only` 秒级；全量 = 仓库自检 + ruff + pytest + eslint + vitest + build）；
+  - `scripts/remote-branch-protection.json`：`main` 分支保护的 `gh api` 载荷（Require PR 1 人评审 + 必选检查「CI 全部通过」）；
+  - `.gitattributes`：显式行尾策略（文本一律 LF、`*.bat`/`*.cmd` 强制 CRLF），并顺带修掉历史遗留——`stop.bat` 在仓库中的行尾是 **CR CR LF（重复回车）**，`start.bat`/`reset-db.bat` 则是"存储 LF、靠本机 `autocrlf` 才在 Windows 上变成 CRLF"，三者现已统一为"仓库内 LF、任何平台检出均为 CRLF"；
+  - `docs/分工/06-自动化检查与CI门禁.md`：检查项总览 / 本地与远端用法 / 一次性配置步骤 / 常见红灯自救 / 扩展方式。
+- **本轮验证（2026-09-23 实测）**：
+  - `python scripts/ci_check.py` → 120 个已跟踪文件全量扫描：0 阻断、0 提示（含 3 个 `.bat` 编码合规）；
+  - `python scripts/ci_check.py --self-test` → **33 个样本全部符合预期**（违规样本被抓、正常写法不误伤）；
+  - 失败路径实测：`--max-file-mb 0.05` 命中 2 个超大文件并返回**退出码 1**（证明检查并非"永远绿灯"）；
+  - `python scripts/precheck.py` → 6 项全绿：仓库自检 1.2s / ruff 通过 / pytest **119 passed** 27.6s / eslint 0 问题 / vitest **18 passed** / build ✓（总耗时 52.5s）；
+  - 行尾问题实测：`stop.bat` 修复前后 680B（CR CR LF×17）→ 663B（CRLF×17），三个 `.bat` 现均为 `i/lf + w/crlf + attr/text eol=crlf`（`git ls-files --eol` 核验）；
+  - `.github` 三份 YAML 经 PyYAML 解析通过，作业结构核对无误：`repo-guard`、`backend`（services: mysql + redis）、`frontend`、`ci-gate`（needs 前三者）。
+- **待办（组长执行，需能访问 github.com 的网络环境）**：
+  1. `git push -u origin main` 推送流水线与脚本（本机当前网络实测无法连通 github.com：`git ls-remote` 报 Connection was reset）；
+  2. 首次 CI 跑完后进 Settings → Branches，勾选必选检查「CI 全部通过」+ Require PR（1 人评审），命令见 06 文档第 5.2 节；
+  3. 拿到各成员 GitHub 账号后补全 `.github/CODEOWNERS` 的模块负责人，并考虑开启 "Require review from Code Owners"。
+- **注意**：GitHub 免费账号的**私有**仓库不支持分支保护规则（需 Pro/Team），课程作业建议仓库设为 public；若坚持私有，则说明"检查项已就绪、由 `ci-gate` 汇总"。
+
 ## 完成项
 
 - **Phase 0**：Node 22.21 / Python 3.13.9 / MySQL 8（root 密码实测 `123456`）/ Redis 5.0.14（PONG）全部核验；`backend/.env`、`frontend/.env` 按附录 E 生成（真实 .env 不入库）。

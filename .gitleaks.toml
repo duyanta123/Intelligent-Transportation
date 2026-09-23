@@ -1,0 +1,13 @@
+# gitleaks 配置：在默认规则集基础上放行"示例性质"的文件
+# 真实密钥一律不入库（.env 已被 .gitignore 忽略），模板与课程文档中的示例值不算泄露
+[extend]
+useDefault = true
+
+[allowlist]
+description = "模板与文档中的示例键值"
+paths = [
+  '''\.env\.example$''',
+  '''^docs/''',
+  '''^README\.md$''',
+  '''^demo\.md$''',
+]
