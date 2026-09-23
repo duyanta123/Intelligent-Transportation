@@ -55,11 +55,13 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: 后端依赖审计（pip-audit）
+        if: hashFiles('backend/requirements.txt') != ''
         run: |
           python -m pip install --quiet pip-audit
           pip-audit -r backend/requirements.txt --progress-spinner off || echo "::warning::pip-audit 报告了依赖漏洞，请人工评估（本作业不阻断合并）"
 
       - name: 前端依赖审计（npm audit）
+        if: hashFiles('frontend/package.json') != ''
         run: |
           cd frontend
           npm audit --audit-level=high --omit=dev || echo "::warning::npm audit 报告了依赖漏洞，请人工评估（本作业不阻断合并）"

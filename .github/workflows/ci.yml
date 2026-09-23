@@ -18,6 +18,38 @@ permissions:
   contents: read
 
 jobs:
+  detect:
+    name: 检测仓库当前包含哪些部分
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      backend: ${{ steps.check.outputs.backend }}
+      frontend: ${{ steps.check.outputs.frontend }}
+    steps:
+      - name: 拉取代码
+        uses: actions/checkout@v4
+
+      # 项目主体按批次提交：骨架阶段的 main 里可能还没有 backend/ 或 frontend/，
+      # 此时对应作业按"跳过"处理并给出 notice，避免门禁在"还没到那一批"时假红
+      - name: 检查各部分入口文件是否存在
+        id: check
+        run: |
+          set -euo pipefail
+          if [ -f backend/requirements.txt ]; then
+            echo "backend=true" >> "$GITHUB_OUTPUT"
+            echo "检测到 backend/requirements.txt，后端检查将执行"
+          else
+            echo "backend=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=跳过后端检查::仓库当前没有 backend/requirements.txt（该批次尚未提交后端），后端作业按跳过处理"
+          fi
+          if [ -f frontend/package.json ]; then
+            echo "frontend=true" >> "$GITHUB_OUTPUT"
+            echo "检测到 frontend/package.json，前端检查将执行"
+          else
+            echo "frontend=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=跳过前端检查::仓库当前没有 frontend/package.json（该批次尚未提交前端），前端作业按跳过处理"
+          fi
+
   repo-guard:
     name: 仓库卫生与提交规范
     runs-on: ubuntu-latest
@@ -65,6 +97,8 @@ jobs:
     name: 后端 lint + 测试
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    needs: detect
+    if: needs.detect.outputs.backend == 'true'
     defaults:
       run:
         working-directory: backend
@@ -157,6 +191,8 @@ jobs:
     name: 前端 lint + 测试 + 构建
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    needs: detect
+    if: needs.detect.outputs.frontend == 'true'
     defaults:
       run:
         working-directory: frontend
@@ -186,16 +222,17 @@ jobs:
   ci-gate:
     name: CI 全部通过
     runs-on: ubuntu-latest
-    needs: [repo-guard, backend, frontend]
+    needs: [repo-guard, detect, backend, frontend]
     if: always()
     steps:
       - name: 汇总上游作业结果
         run: |
           echo "repo-guard=${{ needs.repo-guard.result }}"
+          echo "detect=${{ needs.detect.result }}（后端存在=${{ needs.detect.outputs.backend }}，前端存在=${{ needs.detect.outputs.frontend }}）"
           echo "backend=${{ needs.backend.result }}"
           echo "frontend=${{ needs.frontend.result }}"
           if [ "${{ contains(needs.*.result, 'failure') }}" = "true" ] || [ "${{ contains(needs.*.result, 'cancelled') }}" = "true" ]; then
             echo "存在未通过的检查，禁止合并"
             exit 1
           fi
-          echo "全部门禁检查通过"
+          echo "全部门禁检查通过（skipped 表示该批次还没有这部分代码，属预期）"
