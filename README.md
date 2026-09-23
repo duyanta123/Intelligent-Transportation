@@ -120,7 +120,7 @@ smart-traffic/
 | 仓库卫生（`repo-guard`） | 禁止 `.env`/`venv`/`node_modules`/`uploads`/模型等入库、单文件 >5MB、硬编码密钥、`.bat` 编码（CRLF+无 BOM）、配置项与 `.env.example` 对账、提交信息 `type(scope): 描述` | 不合规直接拦下，不允许合并 |
 | 后端（`backend`） | `ruff check .` + `pytest -q`（CI 内起 MySQL 8.0 与 Redis 5 容器，独立测试库） | 119 个用例必须在干净环境全绿 |
 | 前端（`frontend`） | `npm ci` + `eslint` + `vitest` + `vite build` | 保证 `main` 随时可运行 |
-| 安全（`security.yml`） | gitleaks 全历史密钥扫描（阻断）+ pip-audit / npm audit（每周一定时提示） | 密钥永不入库 |
+| 安全（`security.yml`） | gitleaks 全历史密钥扫描（分支保护必选检查）+ pip-audit / npm audit（每周一定时提示） | 密钥永不入库 |
 
 本地自检（推之前跑一遍，与 CI 同口径）：
 

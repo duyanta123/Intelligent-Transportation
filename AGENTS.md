@@ -115,4 +115,4 @@ python scripts/precheck.py                # 全量：仓库自检 + ruff + pytes
 5. 阶段性任务结束输出：做了什么、验证结果、遗留问题
 6. 每个 Phase 结束必须更新 `docs/PROGRESS.md`（当前 Phase / 完成项 / 验证证据 / 遗留问题 / 下一步），供跨会话续作恢复上下文
 7. 提交前 `git status` 确认无 `.env`、`venv/`、`node_modules/` 等误入仓库
-8. 推分支/开 PR 后确认 GitHub Actions「CI 门禁」四项全绿（仓库卫生与提交规范 / 后端 lint + 测试 / 前端 lint + 测试 + 构建 / CI 全部通过）；PR 描述按 `.github/PULL_REQUEST_TEMPLATE.md` 填自检证据；合入 `main` 前必须有 1 人评审（详见 `docs/分工/06-自动化检查与CI门禁.md`）
+8. 推分支/开 PR 后确认 GitHub Actions 的两个分支保护必选检查全绿：CI 门禁汇总的「CI 全部通过」（其上游四项：仓库卫生与提交规范 / 后端 lint + 测试 / 前端 lint + 测试 + 构建 / 检测）与安全扫描的「密钥泄露扫描」；PR 描述按 `.github/PULL_REQUEST_TEMPLATE.md` 填自检证据；合入 `main` 前必须有 1 人评审（详见 `docs/分工/06-自动化检查与CI门禁.md`）

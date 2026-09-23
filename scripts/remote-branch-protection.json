@@ -2,7 +2,8 @@
   "required_status_checks": {
     "strict": true,
     "checks": [
-      { "context": "CI 全部通过" }
+      { "context": "CI 全部通过" },
+      { "context": "密钥泄露扫描" }
     ]
   },
   "enforce_admins": false,

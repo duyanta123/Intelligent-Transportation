@@ -65,13 +65,13 @@
 - **新增文件**：
   - `.github/workflows/ci.yml`：`repo-guard`（仓库卫生 + 提交信息）、`backend`（ruff + pytest；CI 内起 MySQL 8.0 / Redis 5 服务容器，独立测试库 `smart_traffic_test`）、`frontend`（npm ci + eslint + vitest + build）、`ci-gate`（汇总为唯一必选检查「CI 全部通过」）；
   - `.github/workflows/security.yml`：gitleaks 密钥扫描（阻断；另含每周一 06:00 定时全量）+ pip-audit / npm audit（仅提示不阻断）；
-  - `.gitleaks.toml`：放行模板与课程文档中的示例值（真实密钥仍会拦下）；
+  - `.gitleaks.toml`：放行模板、课程文档中的示例值，以及 ci.yml 一次性容器的测试凭据（真实密钥仍会拦下）；
   - `.github/PULL_REQUEST_TEMPLATE.md`：PR 必填自检证据 / 影响面 / 回滚方式（对齐 AGENTS.md 第 8 节）；
   - `.github/CODEOWNERS`：共享文件、`sql/`、`docs/`、`.github/`、`scripts/` 自动指派组长评审；
   - `.github/dependabot.yml`：pip / npm 每周一 09:30、GitHub Actions 每月自动提升级 PR（提交信息 `chore(deps)`，同样过门禁）；
   - `scripts/ci_check.py`：本地与 CI 共用的仓库卫生规则（禁止入库路径 / 单文件 5MB / 硬编码密钥 / `.bat` 编码 CRLF+无 BOM+`chcp 65001` / 配置项与 `.env.example` 对账 / 提交信息格式），带 `--self-test` 规则自测；
   - `scripts/precheck.py`：一键自检（`--guard-only` 秒级；全量 = 仓库自检 + ruff + pytest + eslint + vitest + build）；
-  - `scripts/remote-branch-protection.json`：`main` 分支保护的 `gh api` 载荷（Require PR 1 人评审 + 必选检查「CI 全部通过」）；
+  - `scripts/remote-branch-protection.json`：`main` 分支保护的 `gh api` 载荷（Require PR 1 人评审 + 必选检查「CI 全部通过」「密钥泄露扫描」）；
   - `.gitattributes`：显式行尾策略（文本一律 LF、`*.bat`/`*.cmd` 强制 CRLF），并顺带修掉历史遗留——`stop.bat` 在仓库中的行尾是 **CR CR LF（重复回车）**，`start.bat`/`reset-db.bat` 则是"存储 LF、靠本机 `autocrlf` 才在 Windows 上变成 CRLF"，三者现已统一为"仓库内 LF、任何平台检出均为 CRLF"；
   - `docs/分工/06-自动化检查与CI门禁.md`：检查项总览 / 本地与远端用法 / 一次性配置步骤 / 常见红灯自救 / 扩展方式。
 - **本轮验证（2026-09-23 实测）**：
@@ -81,16 +81,17 @@
   - `python scripts/precheck.py` → 6 项全绿：仓库自检 1.2s / ruff 通过 / pytest **119 passed** 27.6s / eslint 0 问题 / vitest **18 passed** / build ✓（总耗时 52.5s）；
   - 行尾问题实测：`stop.bat` 修复前后 680B（CR CR LF×17）→ 663B（CRLF×17），三个 `.bat` 现均为 `i/lf + w/crlf + attr/text eol=crlf`（`git ls-files --eol` 核验）；
   - `.github` 三份 YAML 经 PyYAML 解析通过，作业结构核对无误：`repo-guard`、`backend`（services: mysql + redis）、`frontend`、`ci-gate`（needs 前三者）。
-- **推送准备（2026-09-23 已完成，等网络可用时执行）**：
-  - 骨架提交已备好：分支 `chore/ci-bootstrap` → commit `845f1eb`（**根提交**，仅 12 个自动化文件：`.github/`、`.gitattributes`、`.gitleaks.toml`、`scripts/ci_check.py`、`scripts/precheck.py`、`scripts/setup_remote.sh`、`scripts/remote-branch-protection.json`、`docs/分工/06-自动化检查与CI门禁.md`），**不含** `backend/`、`frontend/`、`sql/`、课程文档等项目主体；
-  - 一键推送脚本 `scripts/setup_remote.sh`：两道安全阀（远端 `main` 已有提交则拒绝推送、网络不通给出明确报错），**从不使用 `--force`**；
+- **推送准备（2026-09-23 完成；远端建仓测试提交已由组长删除，满足推送前置条件）**：
+  - 骨架提交已备好：分支 `chore/ci-bootstrap` → commit `262f7f7c`（修订版，含下方复核修订；**根提交**，仅 12 个自动化文件：`.github/`、`.gitattributes`、`.gitleaks.toml`、`scripts/ci_check.py`、`scripts/precheck.py`、`scripts/setup_remote.sh`、`scripts/remote-branch-protection.json`、`docs/分工/06-自动化检查与CI门禁.md`），**不含** `backend/`、`frontend/`、`sql/`、课程文档等项目主体；
+  - 一键推送脚本 `scripts/setup_remote.sh`：远端 `main` 为空时直接首推；已有提交且与骨架历史无关时，把骨架接到远端提交之上再快进推送（保留远端历史与独有文件）；只有两边有共同历史且远端已推进时才拒绝；网络不通明确报错；**从不使用 `--force`**；`--inspect` 只预检，`--protect` 只开分支保护；
   - 完整项目历史保留在本地 `main` 与 `archive/full-project-2026-09-23`：**不要**直接 `git push origin main`，那会把项目主体一起推上去（远端会拒绝非快进推送，属预期保护）。
+- **复核修订（2026-09-23）**：修复推送脚本处理「远端 main 已有建仓测试提交」的问题：旧版见远端非空即拒绝；现改为远端与骨架历史无关时生成并集树接到远端提交之上再快进推送，`--inspect` 只预检、`--protect` 只开保护；同时关闭 `core.quotepath` 避免中文路径误判，分支保护载荷新增必选检查「密钥泄露扫描」，并为 ci.yml 的临时容器测试凭据补充 gitleaks 白名单（避免安全扫描误拦），README/AGENTS/06 文档同步。
 - **待办（组长执行，需能访问 github.com 的网络环境）**：
-  1. `bash scripts/setup_remote.sh`（等价 `git push -u origin chore/ci-bootstrap:main`）推送自动化骨架；
-  2. 首次 CI 跑完后执行 `bash scripts/setup_remote.sh --protect`，或按 06 文档第 5.3 节在 Settings → Branches 勾选必选检查「CI 全部通过」+ Require PR（1 人评审）；
+  1. 先 `bash scripts/setup_remote.sh --inspect` 预检，再 `bash scripts/setup_remote.sh` 推送自动化骨架（脚本自动处理远端已有提交；不要手工 `--force` 推 main）；
+  2. 首次 CI 跑完后执行 `bash scripts/setup_remote.sh --protect`，或按 06 文档第 5.3 节在 Settings → Branches 勾选必选检查「CI 全部通过」「密钥泄露扫描」+ Require PR（1 人评审）；
   3. 拿到各成员 GitHub 账号后补全 `.github/CODEOWNERS` 的模块负责人，并考虑开启 "Require review from Code Owners"；
   4. 此后每批提交：成员各自 `git clone` 远端 → 开 `feature/p{N}-{模块}` 分支 → PR 到 `main`（CI 全绿 + 1 人评审后合并）。
-- **骨架态验证（2026-09-23 实测）**：把 `chore/ci-bootstrap` 克隆到临时目录（模拟"远端只有自动化文件"）→ `ci_check` 12 个文件全绿；`ci.yml` 新增 `detect` 作业，缺 `backend/requirements.txt` / `frontend/package.json` 时对应作业按 `skipped` 处理，「CI 全部通过」仍为绿；`setup_remote.sh` 三场景符合预期（远端已有提交时拒绝、URL 不可达时报网络问题、正常时先打印待推文件清单）。
+- **骨架态验证（2026-09-23 实测）**：把 `chore/ci-bootstrap` 克隆到临时目录（模拟"远端只有自动化文件"）→ `ci_check` 12 个文件全绿；`ci.yml` 新增 `detect` 作业，缺 `backend/requirements.txt` / `frontend/package.json` 时对应作业按 `skipped` 处理，「CI 全部通过」仍为绿；`setup_remote.sh` 的远端为空 / 远端有建仓测试提交（并集快进）/ 历史分叉拒绝 / URL 不可达报错四类场景符合预期（本轮已按新逻辑复核）。
 - **注意**：GitHub 免费账号的**私有**仓库不支持分支保护规则（需 Pro/Team），课程作业建议仓库设为 public；若坚持私有，则说明"检查项已就绪、由 `ci-gate` 汇总"。
 
 ## 完成项
