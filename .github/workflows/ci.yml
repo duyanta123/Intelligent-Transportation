@@ -185,7 +185,9 @@ jobs:
         run: ruff check .
 
       - name: pytest（独立测试库 smart_traffic_test）
-        run: pytest -q
+        # 用 python -m pytest 而不是裸 pytest：前者会把工作目录（backend/）加入 sys.path，
+        # 否则 conftest 阶段就会 ModuleNotFoundError: No module named 'app'
+        run: python -m pytest -q
 
   frontend:
     name: 前端 lint + 测试 + 构建

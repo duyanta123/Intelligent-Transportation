@@ -21,3 +21,5 @@ ignore = ["B008", "DTZ", "RUF001", "RUF002", "RUF003"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 filterwarnings = ["ignore::DeprecationWarning"]
+# 让裸 pytest 也能导入 app 包（CI 与本地统一用 python -m pytest，此处为兜底）
+pythonpath = ["."]
