@@ -81,10 +81,16 @@
   - `python scripts/precheck.py` → 6 项全绿：仓库自检 1.2s / ruff 通过 / pytest **119 passed** 27.6s / eslint 0 问题 / vitest **18 passed** / build ✓（总耗时 52.5s）；
   - 行尾问题实测：`stop.bat` 修复前后 680B（CR CR LF×17）→ 663B（CRLF×17），三个 `.bat` 现均为 `i/lf + w/crlf + attr/text eol=crlf`（`git ls-files --eol` 核验）；
   - `.github` 三份 YAML 经 PyYAML 解析通过，作业结构核对无误：`repo-guard`、`backend`（services: mysql + redis）、`frontend`、`ci-gate`（needs 前三者）。
+- **推送准备（2026-09-23 已完成，等网络可用时执行）**：
+  - 骨架提交已备好：分支 `chore/ci-bootstrap` → commit `845f1eb`（**根提交**，仅 12 个自动化文件：`.github/`、`.gitattributes`、`.gitleaks.toml`、`scripts/ci_check.py`、`scripts/precheck.py`、`scripts/setup_remote.sh`、`scripts/remote-branch-protection.json`、`docs/分工/06-自动化检查与CI门禁.md`），**不含** `backend/`、`frontend/`、`sql/`、课程文档等项目主体；
+  - 一键推送脚本 `scripts/setup_remote.sh`：两道安全阀（远端 `main` 已有提交则拒绝推送、网络不通给出明确报错），**从不使用 `--force`**；
+  - 完整项目历史保留在本地 `main` 与 `archive/full-project-2026-09-23`：**不要**直接 `git push origin main`，那会把项目主体一起推上去（远端会拒绝非快进推送，属预期保护）。
 - **待办（组长执行，需能访问 github.com 的网络环境）**：
-  1. `git push -u origin main` 推送流水线与脚本（本机当前网络实测无法连通 github.com：`git ls-remote` 报 Connection was reset）；
-  2. 首次 CI 跑完后进 Settings → Branches，勾选必选检查「CI 全部通过」+ Require PR（1 人评审），命令见 06 文档第 5.2 节；
-  3. 拿到各成员 GitHub 账号后补全 `.github/CODEOWNERS` 的模块负责人，并考虑开启 "Require review from Code Owners"。
+  1. `bash scripts/setup_remote.sh`（等价 `git push -u origin chore/ci-bootstrap:main`）推送自动化骨架；
+  2. 首次 CI 跑完后执行 `bash scripts/setup_remote.sh --protect`，或按 06 文档第 5.3 节在 Settings → Branches 勾选必选检查「CI 全部通过」+ Require PR（1 人评审）；
+  3. 拿到各成员 GitHub 账号后补全 `.github/CODEOWNERS` 的模块负责人，并考虑开启 "Require review from Code Owners"；
+  4. 此后每批提交：成员各自 `git clone` 远端 → 开 `feature/p{N}-{模块}` 分支 → PR 到 `main`（CI 全绿 + 1 人评审后合并）。
+- **骨架态验证（2026-09-23 实测）**：把 `chore/ci-bootstrap` 克隆到临时目录（模拟"远端只有自动化文件"）→ `ci_check` 12 个文件全绿；`ci.yml` 新增 `detect` 作业，缺 `backend/requirements.txt` / `frontend/package.json` 时对应作业按 `skipped` 处理，「CI 全部通过」仍为绿；`setup_remote.sh` 三场景符合预期（远端已有提交时拒绝、URL 不可达时报网络问题、正常时先打印待推文件清单）。
 - **注意**：GitHub 免费账号的**私有**仓库不支持分支保护规则（需 Pro/Team），课程作业建议仓库设为 public；若坚持私有，则说明"检查项已就绪、由 `ci-gate` 汇总"。
 
 ## 完成项
