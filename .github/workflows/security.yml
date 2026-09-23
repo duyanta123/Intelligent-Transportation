@@ -47,7 +47,10 @@ jobs:
         with:
           python-version: "3.13"
 
+      # setup-node 的 cache 在 cache-dependency-path 指向的文件不存在时会直接报错，
+      # 骨架期还没有 frontend/，必须先判存在再装，否则本作业每次必红
       - name: 安装 Node 22
+        if: hashFiles('frontend/package-lock.json') != ''
         uses: actions/setup-node@v7
         with:
           node-version: "22"
