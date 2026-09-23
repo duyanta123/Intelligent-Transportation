@@ -45,7 +45,7 @@
             </el-table-column>
             <el-table-column label="车道数" width="130">
               <template #default="{ row }">
-                <el-input-number v-model="row.lanes" :min="1" :max="12" controls-position="right" style="width: 100%" />
+                <el-input-number v-model="row.lanes" :min="1" :max="12" step-strictly controls-position="right" style="width: 100%" />
               </template>
             </el-table-column>
             <el-table-column width="60">
@@ -145,7 +145,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { Plus, Delete, CircleCheckFilled } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { fetchIntersections, fetchSignalPlans, createSignalPlan, deleteSignalPlan, calcWebster, fetchSignalStatus } from '@/api/traffic'
+import { fetchIntersections, fetchSignalPlans, createSignalPlan, updateSignalPlan, deleteSignalPlan, calcWebster, fetchSignalStatus } from '@/api/traffic'
 import type { Intersection, SignalPlan } from '@/api/traffic'
 import { websterCalc } from '@/utils/algorithms'
 import { useAuthStore } from '@/stores/auth'
@@ -229,6 +229,12 @@ async function calc() {
     calcResult.value = websterCalc(calcPhases.value.map((p) => ({ ...p })))
     const { data } = await calcWebster(calcPhases.value)
     calcResult.value = data
+  } catch (err) {
+    // 不可行输入（如相位过多）：清除预览并提示（http 拦截器已弹出后端错误信息）
+    calcResult.value = null
+    if (err instanceof Error && err.message && !err.message.includes('Request failed')) {
+      ElMessage.warning(err.message)
+    }
   } finally {
     calcLoading.value = false
   }
@@ -266,7 +272,8 @@ async function loadPlans() {
 }
 
 async function activate(row: SignalPlan) {
-  await createSignalPlan({
+  // 用 PUT 更新启用状态（此前用 POST 重复创建同名方案，越点越多的脏数据就是这么来的）
+  await updateSignalPlan(row.id, {
     intersection_id: row.intersection_id,
     name: row.name,
     mode: row.mode,
@@ -291,13 +298,21 @@ const signalStatus = ref<Record<string, unknown>[]>([])
 let statusTimer: number | null = null
 
 async function loadStatus() {
-  const { data } = await fetchSignalStatus()
-  signalStatus.value = data
+  try {
+    const { data } = await fetchSignalStatus()
+    signalStatus.value = data
+  } catch {
+    // 后端瞬断时静默降级（不 try/catch 的话每 10 秒弹一次错误 toast，永不停止）
+  }
 }
 
 onMounted(async () => {
-  const { data } = await fetchIntersections()
-  intersections.value = data
+  try {
+    const { data } = await fetchIntersections()
+    intersections.value = data
+  } catch {
+    // 路口加载失败不阻断方案列表与轮询
+  }
   const preset = route.query.intersection_id
   if (preset) {
     filterId.value = Number(preset)

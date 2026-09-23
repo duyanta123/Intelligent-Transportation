@@ -56,7 +56,7 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="save">保存</el-button>
+        <el-button type="primary" :loading="saving" @click="save">保存</el-button>
       </template>
     </el-dialog>
   </div>
@@ -68,24 +68,28 @@ import { Search, Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { fetchSections, createSection, updateSection, deleteSection, fetchIntersections } from '@/api/traffic'
 import type { RoadSection, Intersection } from '@/api/traffic'
+import { sequenceGuard } from '@/utils/async'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
 const rows = ref<RoadSection[]>([])
 const intersections = ref<Intersection[]>([])
 const loading = ref(false)
+const saving = ref(false)
+const listSeq = sequenceGuard()
 const keyword = ref('')
 const dialogVisible = ref(false)
 const editingId = ref(0)
 const form = reactive({ name: '', start_intersection_id: 0, end_intersection_id: 0, lane_count: 4, length_km: 1.0, direction: '东西' })
 
 async function load() {
+  const seq = listSeq.begin()
   loading.value = true
   try {
     const { data } = await fetchSections({ keyword: keyword.value })
-    rows.value = data
+    if (listSeq.isCurrent(seq)) rows.value = data
   } finally {
-    loading.value = false
+    if (listSeq.isCurrent(seq)) loading.value = false
   }
 }
 
@@ -105,18 +109,27 @@ async function save() {
     ElMessage.warning('请完整填写路段信息')
     return
   }
-  if (editingId.value) {
-    await updateSection(editingId.value, { ...form })
-  } else {
-    await createSection({ ...form })
+  saving.value = true
+  try {
+    if (editingId.value) {
+      await updateSection(editingId.value, { ...form })
+    } else {
+      await createSection({ ...form })
+    }
+    ElMessage.success('保存成功')
+    dialogVisible.value = false
+    await load()
+  } finally {
+    saving.value = false
   }
-  ElMessage.success('保存成功')
-  dialogVisible.value = false
-  await load()
 }
 
 async function remove(row: RoadSection) {
-  await ElMessageBox.confirm(`确认删除路段「${row.name}」？`, '提示', { type: 'warning' })
+  try {
+    await ElMessageBox.confirm(`确认删除路段「${row.name}」？`, '提示', { type: 'warning' })
+  } catch {
+    return // 用户取消
+  }
   await deleteSection(row.id)
   ElMessage.success('已删除')
   await load()

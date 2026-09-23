@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import type { MenuItem } from '@/types/api'
 
 // 静态路由：登录页与大屏（大屏为独立全屏页，不在管理布局内）
 const routes: RouteRecordRaw[] = [
@@ -43,6 +44,24 @@ const router = createRouter({
   routes,
 })
 
+/** 收集已授权菜单的全部可达路径（含子菜单） */
+function collectPaths(menus: MenuItem[], set: Set<string>): void {
+  for (const m of menus) {
+    if (m.path) set.add(m.path)
+    if (m.children?.length) collectPaths(m.children, set)
+  }
+}
+
+/** 已授权菜单中第一个有路径的页面（作为无权访问目标页时的落点） */
+function firstAllowedPath(menus: MenuItem[]): string {
+  for (const m of menus) {
+    if (m.path) return m.path
+    const childPath = m.children?.length ? firstAllowedPath(m.children) : ''
+    if (childPath) return childPath
+  }
+  return ''
+}
+
 router.beforeEach((to) => {
   const auth = useAuthStore()
   document.title = to.meta.title ? `${to.meta.title} - 智慧交通综合管理服务平台` : '智慧交通综合管理服务平台'
@@ -51,6 +70,13 @@ router.beforeEach((to) => {
   }
   if (!auth.isLoggedIn) {
     return { path: '/login', query: { redirect: to.fullPath } }
+  }
+  // 角色越权防护：菜单未授予的页面禁止直达（此前仅隐藏菜单，可输 URL 进入后连弹 403；
+  // 后端接口另有 RBAC 兜底，这里防的是页面级误入）
+  const allowed = new Set<string>()
+  collectPaths(auth.menus, allowed)
+  if (allowed.size > 0 && !allowed.has(to.path)) {
+    return { path: firstAllowedPath(auth.menus) || '/dashboard' }
   }
   return true
 })

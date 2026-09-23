@@ -15,7 +15,7 @@ from app.services.algorithms import (
     speed_by_saturation,
 )
 from app.services.oplog import log_op
-from app.utils.validators import clamp_page
+from app.utils.validators import clamp_page, to_local_naive
 
 router = APIRouter(tags=["路况监测"])
 
@@ -145,7 +145,10 @@ def flow_history(
     current_user: User = Depends(require_roles("admin", "officer", "user")),
 ):
     """历史流量查询：按小时/天聚合（平均流率与平均车速、峰值）"""
-    page, size = clamp_page(page, size)
+    # 传参若带时区（前端 toISOString 的 Z 结尾）先归一化，防止查询窗口整体偏移 8 小时
+    start = to_local_naive(start)
+    end = to_local_naive(end)
+    page, size = clamp_page(page, size, max_size=500)
     end = end or datetime.now()
     start = start or end - timedelta(days=7)
     # MySQL DATETIME 写入时对小数秒四舍五入（0.6s 会进位到下一秒），
@@ -198,6 +201,11 @@ def flow_history(
 LEVEL_NAMES = ["自由流", "缓行", "拥堵", "严重拥堵"]
 
 
+def _level_name(level: int) -> str:
+    """防脏数据越界（正常只会是 congestion_level() 输出的 0-3）"""
+    return LEVEL_NAMES[min(3, max(0, int(level)))]
+
+
 @router.get("/traffic-flow/congestion")
 def congestion_now(
     db: Session = Depends(get_db),
@@ -214,7 +222,7 @@ def congestion_now(
         db.query(TrafficFlow, RoadSection)
         .join(latest_sq, latest_sq.c.max_id == TrafficFlow.id)
         .join(RoadSection, RoadSection.id == TrafficFlow.road_section_id)
-        .filter(TrafficFlow.is_deleted == 0)
+        .filter(TrafficFlow.is_deleted == 0, RoadSection.is_deleted == 0)
         .all()
     )
     intersections = db.query(Intersection).filter(Intersection.is_deleted == 0).all()
@@ -236,7 +244,7 @@ def congestion_now(
                     "speed": float(flow.speed),
                     "saturation": float(flow.saturation),
                     "level": flow.congestion_level,
-                    "level_name": LEVEL_NAMES[flow.congestion_level],
+                    "level_name": _level_name(flow.congestion_level),
                     "recorded_at": flow.recorded_at.strftime("%Y-%m-%d %H:%M:%S"),
                 }
                 for flow, section in rows
@@ -248,7 +256,7 @@ def congestion_now(
                     "longitude": float(i.longitude),
                     "latitude": float(i.latitude),
                     "level": section_level.get(i.id, {}).get("level", 0),
-                    "level_name": LEVEL_NAMES[section_level.get(i.id, {}).get("level", 0)],
+                    "level_name": _level_name(section_level.get(i.id, {}).get("level", 0)),
                     "flow": section_level.get(i.id, {}).get("flow", 0),
                     "speed": section_level.get(i.id, {}).get("speed", 0),
                 }

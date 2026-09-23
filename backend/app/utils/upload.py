@@ -7,7 +7,7 @@ from fastapi import UploadFile
 
 from app.core.config import settings
 from app.core.response import E_UPLOAD, BizError
-from app.utils.validators import UPLOAD_MAX_BYTES, UPLOAD_SUFFIXES
+from app.utils.validators import UPLOAD_MAX_BYTES, UPLOAD_SUFFIXES, is_image_bytes
 
 
 def save_image(file: UploadFile | None) -> str:
@@ -22,6 +22,9 @@ def save_image(file: UploadFile | None) -> str:
         raise BizError(*E_UPLOAD)
     if not content:
         return ""
+    if not is_image_bytes(content):
+        # 扩展名可伪造，按文件头二次校验，拒绝伪装成图片的任意文件
+        raise BizError(*E_UPLOAD)
     upload_dir = os.path.join(settings.UPLOAD_DIR)
     os.makedirs(upload_dir, exist_ok=True)
     filename = f"{time.strftime('%Y%m%d%H%M%S')}_{time.time_ns() % 1000000}{suffix}"

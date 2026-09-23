@@ -60,7 +60,8 @@ def update_user(
         value = getattr(body, field)
         if value is not None:
             setattr(user, field, value)
-    log_op(db, request, user, "修改", f"管理员更新用户信息：{user.username}")
+    # 操作人必须是执行操作的管理员；此前误传目标用户，审计轨迹失真
+    log_op(db, request, admin_user, "修改", f"管理员更新用户信息：{user.username}")
     db.commit()
     return ok(_user_out(user), "更新成功")
 

@@ -4,7 +4,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
-from app.core.redis_client import KEY_TOKEN_BLACKLIST, get_redis
+from app.core.redis_client import KEY_PWD_FLOOR, KEY_TOKEN_BLACKLIST, get_redis
 from app.core.response import E_FORBIDDEN, E_UNAUTHORIZED, BizError
 from app.core.security import decode_access_token
 
@@ -24,7 +24,7 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: Session = Depends(get_db),
 ):
-    """解析 Authorization: Bearer <token>，校验黑名单与用户状态"""
+    """解析 Authorization: Bearer <token>，校验黑名单、改密吊销与用户状态"""
     from app.models import User  # 局部导入避免循环依赖
 
     if credentials is None:
@@ -36,6 +36,11 @@ def get_current_user(
     payload = decode_access_token(token)
     if payload is None:
         raise BizError(10001, "登录已过期，请重新登录", 401)
+    # 改密吊销：修改密码后，早于改密时间签发的 token 全部失效
+    # （覆盖"用户在其他设备持有旧 token"的场景，黑名单只能吊销当前请求的 token）
+    floor = redis.get(KEY_PWD_FLOOR.format(user_id=payload.get("sub", "")))
+    if floor and int(payload.get("iat") or 0) < int(floor):
+        raise BizError(10001, "密码已修改，请重新登录", 401)
     user = db.get(User, int(payload["sub"]))
     if user is None or user.is_deleted or user.status != 1:
         raise BizError(10001, "账号不存在或已被禁用", 401)

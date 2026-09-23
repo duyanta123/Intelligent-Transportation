@@ -45,7 +45,7 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="save">{{ form.status === 1 || editingId ? '保存' : '存为草稿' }}</el-button>
+        <el-button type="primary" :loading="saving" @click="save">{{ form.status === 1 || editingId ? '保存' : '存为草稿' }}</el-button>
       </template>
     </el-dialog>
   </div>
@@ -57,6 +57,7 @@ import { Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { fetchNotices, createNotice, updateNotice, deleteNotice } from '@/api/service'
 import type { Notice } from '@/api/service'
+import { sequenceGuard } from '@/utils/async'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
@@ -65,6 +66,8 @@ const total = ref(0)
 const page = ref(1)
 const size = ref(10)
 const loading = ref(false)
+const saving = ref(false)
+const listSeq = sequenceGuard()
 const dialogVisible = ref(false)
 const editingId = ref(0)
 const form = reactive({ title: '', content: '', status: 1 })
@@ -74,13 +77,16 @@ function stripHtml(text: string) {
 }
 
 async function load() {
+  const seq = listSeq.begin()
   loading.value = true
   try {
     const { data } = await fetchNotices({ page: page.value, size: size.value })
-    rows.value = data.list
-    total.value = data.total
+    if (listSeq.isCurrent(seq)) {
+      rows.value = data.list
+      total.value = data.total
+    }
   } finally {
-    loading.value = false
+    if (listSeq.isCurrent(seq)) loading.value = false
   }
 }
 
@@ -95,20 +101,27 @@ async function save() {
     ElMessage.warning('请填写标题与内容')
     return
   }
-  if (editingId.value) {
-    await updateNotice(editingId.value, { ...form })
-  } else {
-    await createNotice({ ...form })
+  saving.value = true
+  try {
+    if (editingId.value) {
+      await updateNotice(editingId.value, { ...form })
+    } else {
+      await createNotice({ ...form })
+    }
+    ElMessage.success('保存成功')
+    dialogVisible.value = false
+    await load()
+  } finally {
+    saving.value = false
   }
-  ElMessage.success('保存成功')
-  dialogVisible.value = false
-  await load()
 }
 
 async function remove(row: Notice) {
   await ElMessageBox.confirm(`确认删除公告「${row.title}」？`, '提示', { type: 'warning' })
   await deleteNotice(row.id)
   ElMessage.success('已删除')
+  // 删的是当前页最后一条时回退一页，避免越界空列表
+  if (rows.value.length === 1 && page.value > 1) page.value -= 1
   await load()
 }
 

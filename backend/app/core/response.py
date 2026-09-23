@@ -39,6 +39,9 @@ E_OLD_PASSWORD = (10008, "原密码不正确", 400)
 E_NOT_FOUND = (20001, "记录不存在", 404)
 E_PLATE_INVALID = (20002, "车牌号格式不正确", 400)
 E_VIOLATION_AUDITED = (20003, "该违章已审核，不能重复审核", 400)
+E_VIOLATION_PROCESS_DENIED = (20004, "仅审核通过的违章可标记为已处理", 400)
+E_PLATE_DUPLICATE = (20005, "该车牌号已登记", 400)
+E_SIGNAL_INFEASIBLE = (20006, "配时方案不可行：相位过多或最短绿灯之和已超出最大周期", 400)
 
 # ---- 停车与计费 3xxxx ----
 E_PARKING_FULL = (30001, "停车场车位已满", 400)

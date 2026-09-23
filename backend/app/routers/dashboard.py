@@ -7,6 +7,7 @@ import json
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends
+from redis.exceptions import RedisError
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -30,6 +31,11 @@ from app.services.auth_service import get_user_role_code
 router = APIRouter(tags=["数据大屏"])
 
 LEVEL_NAMES = ["自由流", "缓行", "拥堵", "严重拥堵"]
+
+
+def _level_name(level: int) -> str:
+    """防脏数据越界（正常只会是 congestion_level() 输出的 0-3）"""
+    return LEVEL_NAMES[min(3, max(0, int(level)))]
 
 
 def _today_flow_kpi(db: Session) -> float:
@@ -75,6 +81,7 @@ def _build_realtime(db: Session) -> dict:
         db.query(RoadSection, TrafficFlow)
         .join(latest_sq, latest_sq.c.max_id == TrafficFlow.id)
         .join(RoadSection, RoadSection.id == TrafficFlow.road_section_id)
+        .filter(RoadSection.is_deleted == 0)
         .all()
     )
     inter_state: dict[int, dict] = {}
@@ -92,7 +99,7 @@ def _build_realtime(db: Session) -> dict:
             "lng": float(i.longitude),
             "lat": float(i.latitude),
             "level": inter_state.get(i.id, {}).get("level", 0),
-            "level_name": LEVEL_NAMES[inter_state.get(i.id, {}).get("level", 0)],
+            "level_name": _level_name(inter_state.get(i.id, {}).get("level", 0)),
             "flow": inter_state.get(i.id, {}).get("flow", 0),
             "speed": inter_state.get(i.id, {}).get("speed", 0),
         }
@@ -177,11 +184,18 @@ def dashboard_realtime(
 ):
     """大屏实时聚合：Redis 缓存 TTL 8 秒，前端 10 秒轮询"""
     redis = get_redis()
-    cached = redis.get(KEY_DASHBOARD)
+    try:
+        cached = redis.get(KEY_DASHBOARD)
+    except RedisError:
+        # Redis 不可用时降级直查 DB，而不是把大屏打挂（health 已报 degraded）
+        cached = None
     if cached:
         return ok(json.loads(cached))
     data = _build_realtime(db)
-    redis.setex(KEY_DASHBOARD, settings.DASHBOARD_CACHE_TTL_SECONDS, json.dumps(data, ensure_ascii=False))
+    try:
+        redis.setex(KEY_DASHBOARD, settings.DASHBOARD_CACHE_TTL_SECONDS, json.dumps(data, ensure_ascii=False))
+    except RedisError:
+        pass  # 缓存写失败不影响本次响应
     return ok(data)
 
 

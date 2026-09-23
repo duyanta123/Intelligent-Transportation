@@ -14,7 +14,7 @@
             :value="key"
           />
         </el-select>
-        <el-button type="primary" :icon="Search" @click="load">查询</el-button>
+        <el-button type="primary" :icon="Search" @click="search">查询</el-button>
         <span class="spacer" />
         <el-button v-if="canManage" type="success" plain :icon="Download" @click="doExport">导出 Excel</el-button>
         <el-button v-if="canManage" type="primary" :icon="Plus" @click="openCreate">录入违章</el-button>
@@ -94,7 +94,7 @@
       </el-form>
       <template #footer>
         <el-button @click="createVisible = false">取消</el-button>
-        <el-button type="primary" @click="save">提交并送审</el-button>
+        <el-button type="primary" :loading="saving" @click="save">提交并送审</el-button>
       </template>
     </el-dialog>
   </div>
@@ -109,6 +109,8 @@ import { fetchIntersections } from '@/api/traffic'
 import { uploadImage } from '@/api/dashboard'
 import { downloadFile } from '@/api/download'
 import http from '@/api/http'
+import { nowLocalString, todayLocalDate } from '@/utils/datetime'
+import { sequenceGuard } from '@/utils/async'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
@@ -118,6 +120,7 @@ const total = ref(0)
 const page = ref(1)
 const size = ref(10)
 const loading = ref(false)
+const listSeq = sequenceGuard()
 const typeCodes = ref<string[]>([])
 const intersections = ref<Record<string, unknown>[]>([])
 const statusNames: Record<string, string> = { pending: '待审核', confirmed: '已确认', rejected: '已驳回', processed: '已处理' }
@@ -126,6 +129,7 @@ const query = reactive({ plate_no: '', violation_type: '', status: '' })
 
 const createVisible = ref(false)
 const formRef = ref<FormInstance>()
+const saving = ref(false)
 const presets: Record<string, { fine: number; points: number }> = {}
 const form = reactive({ plate_no: '', violation_type: '', intersection_id: undefined as number | undefined, violation_time: '', fine_amount: 0, deduct_points: 0, evidence_url: '', remark: '' })
 
@@ -149,18 +153,28 @@ function applyPreset(type: string) {
 }
 
 async function load() {
+  const seq = listSeq.begin()
   loading.value = true
   try {
     const { data } = await fetchViolations({ page: page.value, size: size.value, ...query })
-    rows.value = data.list as never
-    total.value = data.total
+    if (listSeq.isCurrent(seq)) {
+      rows.value = data.list as never
+      total.value = data.total
+    }
   } finally {
-    loading.value = false
+    if (listSeq.isCurrent(seq)) loading.value = false
   }
 }
 
+/** 条件查询：重置到第 1 页，避免停在深层页码查不到数据 */
+function search() {
+  page.value = 1
+  load()
+}
+
 function openCreate() {
-  Object.assign(form, { plate_no: '', violation_type: '', intersection_id: undefined, violation_time: new Date().toISOString().slice(0, 19), fine_amount: 0, deduct_points: 0, evidence_url: '', remark: '' })
+  // 用本地时间做默认值（toISOString 是 UTC，+8 时区下会早 8 小时）；与选择器 value-format 的 T 分隔保持一致
+  Object.assign(form, { plate_no: '', violation_type: '', intersection_id: undefined, violation_time: nowLocalString().replace(' ', 'T'), fine_amount: 0, deduct_points: 0, evidence_url: '', remark: '' })
   createVisible.value = true
 }
 
@@ -175,27 +189,42 @@ async function onEvidenceChange(e: Event) {
 }
 
 function doExport() {
-  downloadFile('/export/violations.xlsx', { days: 30 }, `违章明细_${new Date().toISOString().slice(0, 10).replaceAll('-', '')}.xlsx`)
+  downloadFile('/export/violations.xlsx', { days: 30 }, `违章明细_${todayLocalDate().replaceAll('-', '')}.xlsx`)
 }
 
 async function save() {
   await formRef.value?.validate()
-  await createViolation({ ...form })
-  ElMessage.success('录入成功，等待审核')
-  createVisible.value = false
-  await load()
+  saving.value = true
+  try {
+    await createViolation({ ...form })
+    ElMessage.success('录入成功，等待审核')
+    createVisible.value = false
+    await load()
+  } finally {
+    saving.value = false
+  }
 }
 
 async function audit(row: Record<string, unknown>, result: string) {
   const isApprove = result === 'confirmed'
-  const { value } = await ElMessageBox.prompt(isApprove ? '审核备注（可空）' : '请填写驳回原因', `${isApprove ? '通过' : '驳回'}违章 #${row.id}`, { inputValue: isApprove ? '证据清晰' : '证据不足' })
-  await auditViolation(row.id as number, { result, remark: value ?? '' })
+  let remark = ''
+  try {
+    const { value } = await ElMessageBox.prompt(isApprove ? '审核备注（可空）' : '请填写驳回原因', `${isApprove ? '通过' : '驳回'}违章 #${row.id}`, { inputValue: isApprove ? '证据清晰' : '证据不足' })
+    remark = value ?? ''
+  } catch {
+    return // 用户取消
+  }
+  await auditViolation(row.id as number, { result, remark })
   ElMessage.success('审核完成')
   await load()
 }
 
 async function markProcessed(row: Record<string, unknown>) {
-  await ElMessageBox.confirm(`确认违章 #${row.id}（${row.plate_no}）已处理完毕？`, '提示', { type: 'info' })
+  try {
+    await ElMessageBox.confirm(`确认违章 #${row.id}（${row.plate_no}）已处理完毕？`, '提示', { type: 'info' })
+  } catch {
+    return // 用户取消
+  }
   await processViolation(row.id as number)
   ElMessage.success('已标记为已处理')
   await load()

@@ -49,7 +49,7 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="save">保存</el-button>
+        <el-button type="primary" :loading="saving" @click="save">保存</el-button>
       </template>
     </el-dialog>
   </div>
@@ -62,12 +62,15 @@ import { Search, Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { fetchIntersections, createIntersection, updateIntersection, deleteIntersection } from '@/api/traffic'
 import type { Intersection } from '@/api/traffic'
+import { sequenceGuard } from '@/utils/async'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
 const router = useRouter()
 const rows = ref<Intersection[]>([])
 const loading = ref(false)
+const saving = ref(false)
+const listSeq = sequenceGuard()
 const keyword = ref('')
 const dialogVisible = ref(false)
 const editingId = ref(0)
@@ -81,12 +84,13 @@ const rules: FormRules = {
 }
 
 async function load() {
+  const seq = listSeq.begin()
   loading.value = true
   try {
     const { data } = await fetchIntersections({ keyword: keyword.value })
-    rows.value = data
+    if (listSeq.isCurrent(seq)) rows.value = data
   } finally {
-    loading.value = false
+    if (listSeq.isCurrent(seq)) loading.value = false
   }
 }
 
@@ -102,18 +106,27 @@ function goCalc(row: Intersection) {
 
 async function save() {
   await formRef.value?.validate()
-  if (editingId.value) {
-    await updateIntersection(editingId.value, { ...form })
-  } else {
-    await createIntersection({ ...form })
+  saving.value = true
+  try {
+    if (editingId.value) {
+      await updateIntersection(editingId.value, { ...form })
+    } else {
+      await createIntersection({ ...form })
+    }
+    ElMessage.success('保存成功')
+    dialogVisible.value = false
+    await load()
+  } finally {
+    saving.value = false
   }
-  ElMessage.success('保存成功')
-  dialogVisible.value = false
-  await load()
 }
 
 async function remove(row: Intersection) {
-  await ElMessageBox.confirm(`确认删除路口「${row.name}」？`, '提示', { type: 'warning' })
+  try {
+    await ElMessageBox.confirm(`确认删除路口「${row.name}」？`, '提示', { type: 'warning' })
+  } catch {
+    return // 用户取消
+  }
   await deleteIntersection(row.id)
   ElMessage.success('已删除')
   await load()

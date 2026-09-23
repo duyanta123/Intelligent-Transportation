@@ -59,7 +59,7 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="save">保存</el-button>
+        <el-button type="primary" :loading="saving" @click="save">保存</el-button>
       </template>
     </el-dialog>
   </div>
@@ -74,6 +74,7 @@ import type { MenuItem } from '@/types/api'
 
 const rows = ref<MenuItem[]>([])
 const loading = ref(false)
+const saving = ref(false)
 const dialogVisible = ref(false)
 const editingId = ref(0)
 const form = reactive({ parent_id: 0, name: '', path: '', component: '', icon: '', menu_type: 1, sort_order: 0 })
@@ -121,18 +122,27 @@ async function save() {
     ElMessage.warning('请输入菜单名称')
     return
   }
-  if (editingId.value) {
-    await updateMenu(editingId.value, { ...form })
-  } else {
-    await createMenu({ ...form })
+  saving.value = true
+  try {
+    if (editingId.value) {
+      await updateMenu(editingId.value, { ...form })
+    } else {
+      await createMenu({ ...form })
+    }
+    ElMessage.success('保存成功')
+    dialogVisible.value = false
+    await load()
+  } finally {
+    saving.value = false
   }
-  ElMessage.success('保存成功')
-  dialogVisible.value = false
-  await load()
 }
 
 async function remove(row: MenuItem) {
-  await ElMessageBox.confirm(`确认删除菜单「${row.name}」？`, '提示', { type: 'warning' })
+  try {
+    await ElMessageBox.confirm(`确认删除菜单「${row.name}」？`, '提示', { type: 'warning' })
+  } catch {
+    return // 用户取消
+  }
   await deleteMenu(row.id)
   ElMessage.success('已删除')
   await load()

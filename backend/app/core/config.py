@@ -58,3 +58,8 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# 安全兜底：正式启动时若 JWT_SECRET 缺失或仍是模板默认值，直接拒绝启动
+# （否则任何知道源码的人都能离线伪造任意角色的 token，RBAC 形同虚设）
+if not settings.TESTING and settings.JWT_SECRET in ("", "dev-secret-please-change"):
+    raise RuntimeError("JWT_SECRET 未配置：请在 backend/.env 中设置强随机密钥（可参考 .env.example）")

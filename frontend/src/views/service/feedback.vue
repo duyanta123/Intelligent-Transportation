@@ -5,7 +5,7 @@
         <el-select v-model="query.status" placeholder="状态" clearable style="width: 140px">
           <el-option v-for="(name, key) in statusNames" :key="key" :label="name" :value="key" />
         </el-select>
-        <el-button type="primary" :icon="Search" @click="load">查询</el-button>
+        <el-button type="primary" :icon="Search" @click="search">查询</el-button>
         <span class="spacer" />
         <el-button type="success" :icon="EditPen" @click="submitVisible = true">提交反馈</el-button>
       </div>
@@ -80,6 +80,7 @@ import { Search, EditPen } from '@element-plus/icons-vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { fetchFeedbacks, submitFeedback, handleFeedback } from '@/api/service'
 import type { Feedback } from '@/api/service'
+import { sequenceGuard } from '@/utils/async'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
@@ -91,6 +92,7 @@ const total = ref(0)
 const page = ref(1)
 const size = ref(10)
 const loading = ref(false)
+const listSeq = sequenceGuard()
 const query = reactive({ status: '' })
 
 const submitVisible = ref(false)
@@ -108,14 +110,23 @@ const handling = ref<Feedback | null>(null)
 const handleForm = reactive({ status: 'processing', reply: '' })
 
 async function load() {
+  const seq = listSeq.begin()
   loading.value = true
   try {
     const { data } = await fetchFeedbacks({ page: page.value, size: size.value, status: query.status })
-    rows.value = data.list
-    total.value = data.total
+    if (listSeq.isCurrent(seq)) {
+      rows.value = data.list
+      total.value = data.total
+    }
   } finally {
-    loading.value = false
+    if (listSeq.isCurrent(seq)) loading.value = false
   }
+}
+
+/** 条件查询：重置到第 1 页，避免停在深层页码查不到数据 */
+function search() {
+  page.value = 1
+  load()
 }
 
 async function doSubmit() {
@@ -129,7 +140,8 @@ async function doSubmit() {
 
 function openHandle(row: Feedback) {
   handling.value = row
-  handleForm.status = row.status === 'pending' ? 'processing' : 'resolved'
+  // 只有"已办结"默认保持办结；待受理/处理中都默认进"处理中"（此前处理中的反馈会被默认成已办结）
+  handleForm.status = row.status === 'resolved' ? 'resolved' : 'processing'
   handleForm.reply = row.reply ?? ''
   handleVisible.value = true
 }

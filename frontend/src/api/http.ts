@@ -30,9 +30,16 @@ http.interceptors.request.use((config) => {
   return config
 })
 
+// 并发 401 防抖：多个请求同时过期时只做一次跳转/提示
+let redirectingToLogin = false
+
 // 响应拦截：统一处理 code !== 0、401 跳登录
 http.interceptors.response.use(
   (response) => {
+    // blob 响应（文件下载）不走 JSON 解包，原样交还调用方
+    if (response.config.responseType === 'blob') {
+      return response as never
+    }
     const body = response.data as ApiResponse
     if (body.code !== 0) {
       ElMessage.error(body.message || '请求失败')
@@ -45,11 +52,18 @@ http.interceptors.response.use(
     const body = error.response?.data as ApiResponse | undefined
     if (status === 401) {
       clearToken()
-      ElMessage.error(body?.message || '登录已过期，请重新登录')
-      // 避免在登录页循环跳转
-      if (!location.pathname.startsWith('/login')) {
-        location.href = '/login'
+      if (location.pathname.startsWith('/login')) {
+        ElMessage.error(body?.message || '登录已过期，请重新登录')
+      } else if (!redirectingToLogin) {
+        redirectingToLogin = true
+        ElMessage.error(body?.message || '登录已过期，请重新登录')
+        // 携带当前路径，登录后可回到原页面
+        const redirect = encodeURIComponent(location.pathname + location.search)
+        location.href = `/login?redirect=${redirect}`
       }
+    } else if (error.response?.config?.responseType === 'blob') {
+      // 错误体是 Blob 读不出 message，给导出场景一个明确提示
+      ElMessage.error('导出失败，请稍后重试')
     } else {
       ElMessage.error(body?.message || '网络异常，请检查后端服务是否启动')
     }

@@ -1,17 +1,11 @@
-/** 文件下载：blob 方式拉取（绕过 JSON 响应拦截器），带 token，浏览器端触发保存 */
-import axios from 'axios'
+/** 文件下载：走统一 http 实例（带 token 与 401 处理），blob 响应在拦截器中原样透传 */
+import http from './http'
 import { ElMessage } from 'element-plus'
-import { getToken } from './http'
 
 export async function downloadFile(url: string, params: Record<string, unknown> = {}, filename: string): Promise<void> {
   try {
-    const resp = await axios.get(`${import.meta.env.VITE_API_BASE || '/api/v1'}${url}`, {
-      params,
-      responseType: 'blob',
-      timeout: 60000,
-      headers: { Authorization: `Bearer ${getToken()}` },
-    })
-    const blob = new Blob([resp.data])
+    const resp = await http.get(url, { params, responseType: 'blob', timeout: 60000 })
+    const blob = new Blob([resp.data as BlobPart])
     const link = document.createElement('a')
     link.href = URL.createObjectURL(blob)
     link.download = filename
@@ -21,6 +15,6 @@ export async function downloadFile(url: string, params: Record<string, unknown> 
     URL.revokeObjectURL(link.href)
     ElMessage.success(`已导出：${filename}`)
   } catch {
-    ElMessage.error('导出失败，请稍后重试')
+    // 错误提示已由 http 拦截器统一弹出（含 401 跳登录），此处不再重复
   }
 }

@@ -56,7 +56,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onBeforeUnmount, ref } from 'vue'
 import { UploadFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { recognizePlate } from '@/api/dashboard'
@@ -75,10 +75,16 @@ function onFileChange(file: { raw?: File }) {
     return
   }
   selectedFile.value = file.raw
+  // 释放旧预览的 Blob，避免多次换图后内存持续驻留
+  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
   previewUrl.value = URL.createObjectURL(file.raw)
   result.value = null
   failed.value = false
 }
+
+onBeforeUnmount(() => {
+  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
+})
 
 async function doRecognize() {
   if (!selectedFile.value) return

@@ -2,8 +2,8 @@
   <div class="page">
     <el-card shadow="never">
       <div class="page-toolbar">
-        <el-input v-model="keyword" placeholder="用户名/姓名/手机号" clearable style="width: 240px" @keyup.enter="load" @clear="load" />
-        <el-button type="primary" :icon="Search" @click="load">查询</el-button>
+        <el-input v-model="keyword" placeholder="用户名/姓名/手机号" clearable style="width: 240px" @keyup.enter="search" @clear="search" />
+        <el-button type="primary" :icon="Search" @click="search">查询</el-button>
       </div>
       <el-table v-loading="loading" :data="rows" stripe>
         <el-table-column prop="id" label="ID" width="70" />
@@ -51,7 +51,7 @@
       </el-form>
       <template #footer>
         <el-button @click="editVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveEdit">保存</el-button>
+        <el-button type="primary" :loading="saving" @click="saveEdit">保存</el-button>
       </template>
     </el-dialog>
   </div>
@@ -62,6 +62,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { Search } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { fetchUsers, updateUser } from '@/api/auth'
+import { sequenceGuard } from '@/utils/async'
 
 const rows = ref<Record<string, unknown>[]>([])
 const total = ref(0)
@@ -69,6 +70,8 @@ const page = ref(1)
 const size = ref(10)
 const keyword = ref('')
 const loading = ref(false)
+const saving = ref(false)
+const listSeq = sequenceGuard()
 const editVisible = ref(false)
 const editForm = reactive<{ id: number; username: string; real_name: string; phone: string; email: string }>({
   id: 0,
@@ -79,21 +82,34 @@ const editForm = reactive<{ id: number; username: string; real_name: string; pho
 })
 
 async function load() {
+  const seq = listSeq.begin()
   loading.value = true
   try {
     const { data } = await fetchUsers({ page: page.value, size: size.value, keyword: keyword.value })
-    rows.value = data.list
-    total.value = data.total
+    if (listSeq.isCurrent(seq)) {
+      rows.value = data.list
+      total.value = data.total
+    }
   } finally {
-    loading.value = false
+    if (listSeq.isCurrent(seq)) loading.value = false
   }
+}
+
+/** 条件查询：重置到第 1 页，避免停在深层页码查不到数据 */
+function search() {
+  page.value = 1
+  load()
 }
 
 async function toggleStatus(row: Record<string, unknown>) {
   const next = row.status === 1 ? 0 : 1
-  await updateUser(row.id as number, { status: next })
-  row.status = next
-  ElMessage.success(next === 1 ? '已启用' : '已禁用')
+  try {
+    await updateUser(row.id as number, { status: next })
+    row.status = next
+    ElMessage.success(next === 1 ? '已启用' : '已禁用')
+  } catch {
+    // 失败回显开关（http 拦截器已提示错误）
+  }
 }
 
 function openEdit(row: Record<string, unknown>) {
@@ -102,10 +118,15 @@ function openEdit(row: Record<string, unknown>) {
 }
 
 async function saveEdit() {
-  await updateUser(editForm.id, { real_name: editForm.real_name, phone: editForm.phone, email: editForm.email })
-  ElMessage.success('保存成功')
-  editVisible.value = false
-  await load()
+  saving.value = true
+  try {
+    await updateUser(editForm.id, { real_name: editForm.real_name, phone: editForm.phone, email: editForm.email })
+    ElMessage.success('保存成功')
+    editVisible.value = false
+    await load()
+  } finally {
+    saving.value = false
+  }
 }
 
 onMounted(load)

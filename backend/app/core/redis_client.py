@@ -9,6 +9,10 @@ _pool = redis.ConnectionPool(
     db=settings.REDIS_DB,
     decode_responses=True,
     protocol=2,  # 本机 Redis 5.0.14 不支持 RESP3（HELLO 命令），强制 RESP2
+    # 无超时的话，Redis 挂起（非拒连）会让登录/鉴权/大屏全部无限期阻塞
+    socket_timeout=3,
+    socket_connect_timeout=3,
+    health_check_interval=30,
 )
 
 
@@ -22,3 +26,4 @@ KEY_TOKEN_BLACKLIST = "token:blacklist:{token}"  # 登出 token 黑名单，TTL=
 KEY_LOGIN_FAIL = "login:fail:{name}"     # 登录失败计数（账号/IP），TTL=10 分钟
 KEY_LOGIN_LOCK = "login:lock:{name}"     # 登录锁定标记，TTL=10 分钟
 KEY_DASHBOARD = "dashboard:realtime"     # 大屏聚合缓存，TTL=8 秒
+KEY_PWD_FLOOR = "token:pwd_floor:{user_id}"  # 改密时间下限：iat 早于该值的 token 一律拒绝，TTL=JWT 有效期

@@ -3,20 +3,23 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import func, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_db, require_roles
 from app.core.response import (
     E_NOT_FOUND,
+    E_PLATE_DUPLICATE,
     E_PLATE_INVALID,
     E_VIOLATION_AUDITED,
+    E_VIOLATION_PROCESS_DENIED,
     BizError,
     ok,
 )
 from app.models import User, Vehicle, Violation
 from app.schemas import VehicleIn, ViolationAuditIn, ViolationIn
 from app.services.oplog import log_op
-from app.utils.validators import clamp_page, normalize_plate
+from app.utils.validators import clamp_page, normalize_plate, to_local_naive
 
 router = APIRouter(tags=["车辆与违章"])
 
@@ -90,11 +93,16 @@ def create_vehicle(
         raise BizError(*E_PLATE_INVALID)
     exists = db.query(Vehicle).filter(Vehicle.plate_no == plate, Vehicle.is_deleted == 0).first()
     if exists:
-        raise BizError(20003, "该车牌号已登记", 400)
+        raise BizError(*E_PLATE_DUPLICATE)
     vehicle = Vehicle(**body.model_dump())
     vehicle.plate_no = plate
     db.add(vehicle)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError as err:
+        # 并发登记同一车牌时唯一索引兜底（查询查重与插入之间存在竞态窗口）
+        db.rollback()
+        raise BizError(*E_PLATE_DUPLICATE) from err
     log_op(db, request, current_user, "新增", f"登记车辆：{plate}")
     db.commit()
     return ok({"id": vehicle.id}, "登记成功")
@@ -120,10 +128,19 @@ def update_vehicle(
     plate = normalize_plate(body.plate_no)
     if not _is_plate_valid(plate):
         raise BizError(*E_PLATE_INVALID)
+    # 改车牌查重（排除自身），否则撞唯一索引直接 500
+    dup = db.query(Vehicle).filter(Vehicle.plate_no == plate, Vehicle.is_deleted == 0, Vehicle.id != item_id).first()
+    if dup:
+        raise BizError(*E_PLATE_DUPLICATE)
     data = body.model_dump()
     data["plate_no"] = plate
     for field, value in data.items():
         setattr(vehicle, field, value)
+    try:
+        db.flush()
+    except IntegrityError as err:
+        db.rollback()
+        raise BizError(*E_PLATE_DUPLICATE) from err
     log_op(db, request, admin_user, "修改", f"修改车辆信息：{plate}")
     db.commit()
     return ok(None, "更新成功")
@@ -136,8 +153,13 @@ def delete_vehicle(
     vehicle = db.query(Vehicle).filter(Vehicle.id == item_id, Vehicle.is_deleted == 0).first()
     if vehicle is None:
         raise BizError(*E_NOT_FOUND)
+    # 软删除 + 车牌改写墓碑：plate_no 有唯一索引，若保留原值，
+    # 该车牌将永远无法重新登记（INSERT 撞唯一键报 500）。
+    # 墓碑后缀 *{id} 保证全局唯一；历史违章记录存的是原字符串，不受影响。
+    original_plate = vehicle.plate_no
     vehicle.is_deleted = 1
-    log_op(db, request, admin_user, "删除", f"删除车辆：{vehicle.plate_no}（软删除）")
+    vehicle.plate_no = f"{original_plate}*{vehicle.id}"[:16]
+    log_op(db, request, admin_user, "删除", f"删除车辆：{original_plate}（软删除）")
     db.commit()
     return ok(None, "删除成功")
 
@@ -218,12 +240,22 @@ def create_violation(
     if not _is_plate_valid(plate):
         raise BizError(*E_PLATE_INVALID)
     vehicle = db.query(Vehicle).filter(Vehicle.plate_no == plate, Vehicle.is_deleted == 0).first()
+    if vehicle is not None:
+        vehicle_id = vehicle.id
+    elif body.vehicle_id is not None:
+        # 车牌未登记时才允许使用显式 vehicle_id，且必须真实存在（防止挂到任意/不存在车辆）
+        ref = db.query(Vehicle).filter(Vehicle.id == body.vehicle_id, Vehicle.is_deleted == 0).first()
+        if ref is None:
+            raise BizError(*E_NOT_FOUND)
+        vehicle_id = ref.id
+    else:
+        vehicle_id = None
     item = Violation(
-        vehicle_id=vehicle.id if vehicle else body.vehicle_id,
+        vehicle_id=vehicle_id,
         plate_no=plate,
         intersection_id=body.intersection_id,
         violation_type=body.violation_type,
-        violation_time=body.violation_time,
+        violation_time=to_local_naive(body.violation_time) or datetime.now(),
         fine_amount=body.fine_amount,
         deduct_points=body.deduct_points,
         evidence_url=body.evidence_url,
@@ -270,7 +302,7 @@ def process_violation(
     if item is None:
         raise BizError(*E_NOT_FOUND)
     if item.status != "confirmed":
-        raise BizError(20004, "仅审核通过的违章可标记为已处理", 400)
+        raise BizError(*E_VIOLATION_PROCESS_DENIED)
     item.status = "processed"
     log_op(db, request, current_user, "处理", f"违章记录 #{item.id}（{item.plate_no}）处理完毕")
     db.commit()

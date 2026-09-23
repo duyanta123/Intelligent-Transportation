@@ -138,3 +138,36 @@ def test_update_profile_self_service(client, admin_headers):
     # profile 回读一致
     prof = client.get("/api/v1/auth/profile", headers=admin_headers).json()["data"]
     assert prof["real_name"] == "新名字" and prof["email"] == "me@traffic.local"
+
+
+def test_captcha_single_use(client):
+    """验证码原子取出即销毁：同一验证码第二次使用必须失败（防并发重放）"""
+    key, code = _captcha_code(client)
+    payload = {"username": "tadmin", "password": "123456", "captcha_key": key, "captcha_code": code}
+    assert client.post("/api/v1/auth/login", json=payload).json()["code"] == 0
+    resp = client.post("/api/v1/auth/login", json=payload)
+    assert resp.json()["code"] == 10004
+
+
+def test_password_change_revokes_existing_tokens(client, login_as):
+    """改密后旧 token 必须失效（iat 早于改密时间下限），新登录不受影响"""
+    import time
+
+    headers = login_as("tofficer")
+    time.sleep(1.1)  # 与 token 签发时间错开 1 秒（JWT iat 秒级精度）
+    resp = client.put("/api/v1/auth/password", headers=headers, json={"old_password": "123456", "new_password": "abc12345"})
+    assert resp.json()["code"] == 0
+    # 旧 token 已被吊销
+    assert client.get("/api/v1/auth/profile", headers=headers).status_code == 401
+    # 新密码可登录、新 token 可用
+    resp_login = _do_login(client, "tofficer", "abc12345")
+    assert resp_login.json()["code"] == 0
+    new_headers = {"Authorization": f"Bearer {resp_login.json()['data']['token']}"}
+    assert client.get("/api/v1/auth/profile", headers=new_headers).status_code == 200
+    # 改回原密码，避免影响其他用例（种子账号密码约定 123456）
+    revert = client.put(
+        "/api/v1/auth/password",
+        headers=new_headers,
+        json={"old_password": "abc12345", "new_password": "123456"},
+    )
+    assert revert.json()["code"] == 0

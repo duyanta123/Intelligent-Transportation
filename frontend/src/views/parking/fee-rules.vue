@@ -45,7 +45,7 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="save">保存</el-button>
+        <el-button type="primary" :loading="saving" @click="save">保存</el-button>
       </template>
     </el-dialog>
   </div>
@@ -61,6 +61,7 @@ import { estimateParkingFee } from '@/utils/algorithms'
 
 const rows = ref<FeeRule[]>([])
 const loading = ref(false)
+const saving = ref(false)
 const dialogVisible = ref(false)
 const editingId = ref(0)
 const formRef = ref<FormInstance>()
@@ -96,18 +97,27 @@ function openEdit(row?: FeeRule) {
 
 async function save() {
   await formRef.value?.validate()
-  if (editingId.value) {
-    await updateFeeRule(editingId.value, { ...form })
-  } else {
-    await createFeeRule({ ...form })
+  saving.value = true
+  try {
+    if (editingId.value) {
+      await updateFeeRule(editingId.value, { ...form })
+    } else {
+      await createFeeRule({ ...form })
+    }
+    ElMessage.success('保存成功')
+    dialogVisible.value = false
+    await load()
+  } finally {
+    saving.value = false
   }
-  ElMessage.success('保存成功')
-  dialogVisible.value = false
-  await load()
 }
 
 async function remove(row: FeeRule) {
-  await ElMessageBox.confirm(`确认删除规则「${row.name}」？`, '提示', { type: 'warning' })
+  try {
+    await ElMessageBox.confirm(`确认删除规则「${row.name}」？`, '提示', { type: 'warning' })
+  } catch {
+    return // 用户取消
+  }
   await deleteFeeRule(row.id)
   ElMessage.success('已删除')
   await load()

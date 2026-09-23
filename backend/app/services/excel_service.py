@@ -10,6 +10,16 @@ from openpyxl.utils import get_column_letter
 HEADER_FILL = PatternFill("solid", fgColor="1F6FB2")
 HEADER_FONT = Font(color="FFFFFF", bold=True, size=11)
 
+# Excel 公式注入防护：openpyxl 会把以 = 开头的字符串当公式写入，
+# 导出内容含用户可控文本（审核备注/车牌等）时可能触发 DDE/公式执行
+_RISKY_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _safe_cell(value):
+    if isinstance(value, str) and value.startswith(_RISKY_PREFIXES):
+        return "'" + value
+    return value
+
 
 def build_xlsx(title: str, headers: list[str], rows: list[list]) -> bytes:
     """生成统一风格的 xlsx 字节流：标题行 + 表头 + 数据，自动列宽"""
@@ -34,7 +44,7 @@ def build_xlsx(title: str, headers: list[str], rows: list[list]) -> bytes:
     # 数据行
     for r, row in enumerate(rows, start=3):
         for c, value in enumerate(row, start=1):
-            ws.cell(row=r, column=c, value=value)
+            ws.cell(row=r, column=c, value=_safe_cell(value))
 
     # 自动列宽（按前 200 行采样，中文按 2 列宽估算）
     for col in range(1, len(headers) + 1):

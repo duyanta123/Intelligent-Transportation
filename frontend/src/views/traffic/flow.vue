@@ -40,7 +40,7 @@
               <el-radio-button value="hour">按小时</el-radio-button>
               <el-radio-button value="day">按天</el-radio-button>
             </el-radio-group>
-            <el-button type="primary" @click="loadHistory">查询</el-button>
+            <el-button type="primary" @click="searchHistory">查询</el-button>
             <el-button plain :icon="Download" @click="doExport">导出日报</el-button>
             <span v-if="canReport" class="spacer" />
             <el-button v-if="canReport" type="success" plain @click="reportVisible = true">模拟上报</el-button>
@@ -86,6 +86,8 @@ import { Download } from '@element-plus/icons-vue'
 import { downloadFile } from '@/api/download'
 import { fetchSections, fetchFlowHistory, fetchCongestion, reportFlow } from '@/api/traffic'
 import type { RoadSection } from '@/api/traffic'
+import { todayLocalDate } from '@/utils/datetime'
+import { sequenceGuard } from '@/utils/async'
 import { useAuthStore } from '@/stores/auth'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -102,6 +104,7 @@ const sections = ref<RoadSection[]>([])
 const congestions = ref<Record<string, unknown>[]>([])
 const congestionLoading = ref(false)
 const loading = ref(false)
+const historySeq = sequenceGuard()
 const page = ref(1)
 const size = ref(48)
 const total = ref(0)
@@ -157,7 +160,13 @@ const historyOption = computed(() => ({
 }))
 
 function doExport() {
-  downloadFile('/export/traffic-report.xlsx', { days: 7 }, `流量日报_${new Date().toISOString().slice(0, 10).replaceAll('-', '')}.xlsx`)
+  downloadFile('/export/traffic-report.xlsx', { days: 7 }, `流量日报_${todayLocalDate().replaceAll('-', '')}.xlsx`)
+}
+
+/** 条件查询：重置到第 1 页，避免停在深层页码 */
+function searchHistory() {
+  page.value = 1
+  loadHistory()
 }
 
 async function loadCongestion() {
@@ -171,6 +180,7 @@ async function loadCongestion() {
 }
 
 async function loadHistory() {
+  const seq = historySeq.begin()
   loading.value = true
   try {
     if (compareMode.value) {
@@ -182,6 +192,7 @@ async function loadHistory() {
           ),
         ),
       )
+      if (!historySeq.isCurrent(seq)) return
       const nameOf = (id: number) => sections.value.find((s) => s.id === id)?.name ?? `路段${id}`
       const timeSet = new Set<string>()
       results.forEach((r) => r.list.forEach((row) => timeSet.add(row.time)))
@@ -196,11 +207,12 @@ async function loadHistory() {
       const params: Record<string, unknown> = { granularity: query.granularity, page: page.value, size: size.value }
       if (query.section_id) params.road_section_id = query.section_id
       const { data } = await fetchFlowHistory(params)
+      if (!historySeq.isCurrent(seq)) return
       historyRows.value = data.list
       total.value = data.total
     }
   } finally {
-    loading.value = false
+    if (historySeq.isCurrent(seq)) loading.value = false
   }
 }
 

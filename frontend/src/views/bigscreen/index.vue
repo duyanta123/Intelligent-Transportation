@@ -297,15 +297,20 @@ function renderCharts() {
   })
 }
 
+let loadSeq = 0
+
 async function loadData() {
+  // 轮询竞态防护：上一次请求超 10s 未返回时，晚到的旧响应不得覆盖新数据
+  const seq = ++loadSeq
   try {
     const resp = await fetchRealtime()
+    if (seq !== loadSeq) return
     data.value = resp.data
     degraded.value = false
     renderCharts()
     tweenKpis()
   } catch {
-    degraded.value = true
+    if (seq === loadSeq) degraded.value = true
   }
 }
 

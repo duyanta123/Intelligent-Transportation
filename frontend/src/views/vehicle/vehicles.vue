@@ -2,8 +2,8 @@
   <div class="page">
     <el-card shadow="never">
       <div class="page-toolbar">
-        <el-input v-model="keyword" placeholder="车牌号/车主/手机号" clearable style="width: 220px" @keyup.enter="load" />
-        <el-button type="primary" :icon="Search" @click="load">查询</el-button>
+        <el-input v-model="keyword" placeholder="车牌号/车主/手机号" clearable style="width: 220px" @keyup.enter="search" />
+        <el-button type="primary" :icon="Search" @click="search">查询</el-button>
         <span class="spacer" />
         <el-button v-if="canManage" type="primary" :icon="Plus" @click="openEdit()">登记车辆</el-button>
       </div>
@@ -52,7 +52,7 @@
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="save">保存</el-button>
+        <el-button type="primary" :loading="saving" @click="save">保存</el-button>
       </template>
     </el-dialog>
   </div>
@@ -63,6 +63,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { Search, Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { fetchVehicles, createVehicle, updateVehicle, deleteVehicle } from '@/api/vehicle'
+import { sequenceGuard } from '@/utils/async'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
@@ -73,6 +74,8 @@ const page = ref(1)
 const size = ref(10)
 const keyword = ref('')
 const loading = ref(false)
+const saving = ref(false)
+const listSeq = sequenceGuard()
 const dialogVisible = ref(false)
 const editingId = ref(0)
 const formRef = ref<FormInstance>()
@@ -90,13 +93,16 @@ const rules: FormRules = {
 }
 
 async function load() {
+  const seq = listSeq.begin()
   loading.value = true
   try {
     const { data } = await fetchVehicles({ page: page.value, size: size.value, keyword: keyword.value })
-    rows.value = data.list as never
-    total.value = data.total
+    if (listSeq.isCurrent(seq)) {
+      rows.value = data.list as never
+      total.value = data.total
+    }
   } finally {
-    loading.value = false
+    if (listSeq.isCurrent(seq)) loading.value = false
   }
 }
 
@@ -111,22 +117,35 @@ function openEdit(row?: Record<string, unknown>) {
   dialogVisible.value = true
 }
 
+/** 条件查询：重置到第 1 页，避免停在深层页码查不到数据 */
+function search() {
+  page.value = 1
+  load()
+}
+
 async function save() {
   await formRef.value?.validate()
-  if (editingId.value) {
-    await updateVehicle(editingId.value, { ...form })
-  } else {
-    await createVehicle({ ...form })
+  saving.value = true
+  try {
+    if (editingId.value) {
+      await updateVehicle(editingId.value, { ...form })
+    } else {
+      await createVehicle({ ...form })
+    }
+    ElMessage.success('保存成功')
+    dialogVisible.value = false
+    await load()
+  } finally {
+    saving.value = false
   }
-  ElMessage.success('保存成功')
-  dialogVisible.value = false
-  await load()
 }
 
 async function remove(row: Record<string, unknown>) {
   await ElMessageBox.confirm(`确认删除车辆「${row.plate_no}」？`, '提示', { type: 'warning' })
   await deleteVehicle(row.id as number)
   ElMessage.success('已删除')
+  // 删的是当前页最后一条时回退一页，避免越界空列表
+  if (rows.value.length === 1 && page.value > 1) page.value -= 1
   await load()
 }
 

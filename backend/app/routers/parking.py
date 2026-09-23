@@ -22,6 +22,7 @@ from app.utils.validators import (
     clamp_page,
     is_valid_plate,
     normalize_plate,
+    to_local_naive,
 )
 
 router = APIRouter(tags=["智慧停车"])
@@ -148,7 +149,7 @@ def delete_fee_rule(
 
 # ---------------- 出入场 ----------------
 @router.post("/parking/enter")
-async def parking_enter(
+def parking_enter(
     request: Request,
     parking_lot_id: int = Form(...),
     plate_no: str = Form(...),
@@ -156,12 +157,22 @@ async def parking_enter(
     current_user: User = Depends(require_roles("admin", "officer")),
     db: Session = Depends(get_db),
 ):
-    """入场登记（multipart 表单）：可携带入场拍照；车牌重复入场校验、满位校验"""
+    """入场登记（multipart 表单）：可携带入场拍照；车牌重复入场校验、满位校验。
+
+    同步端点（FastAPI 自动丢线程池），避免 save_image 与 DB 阻塞事件循环。
+    """
     body = ParkingEnterIn(parking_lot_id=parking_lot_id, plate_no=plate_no)
     plate = normalize_plate(body.plate_no)
     if not is_valid_plate(plate):
         raise BizError(20002, "车牌号格式不正确", 400)
-    lot = db.query(ParkingLot).filter(ParkingLot.id == body.parking_lot_id, ParkingLot.is_deleted == 0).first()
+    # 行锁（FOR UPDATE）串行化同一停车场的并发入场：防止满位超卖、
+    # 同车牌重复入场、used_slots 读改写丢失更新
+    lot = (
+        db.query(ParkingLot)
+        .filter(ParkingLot.id == body.parking_lot_id, ParkingLot.is_deleted == 0)
+        .with_for_update()
+        .first()
+    )
     if lot is None:
         raise BizError(*E_NOT_FOUND)
     dup = (
@@ -201,9 +212,17 @@ def parking_exit(
     current_user: User = Depends(require_roles("admin", "officer")),
     db: Session = Depends(get_db),
 ):
-    """出场结算：按计费规则计算费用（免费时长/首小时/每小时/单日封顶）"""
+    """出场结算：按计费规则计算费用（免费时长/首小时/每小时/单日封顶）。
+
+    与入场共用停车场行锁：并发双击出场时第二个事务会在记录状态检查处被拒。
+    """
     plate = normalize_plate(body.plate_no)
-    lot = db.query(ParkingLot).filter(ParkingLot.id == body.parking_lot_id, ParkingLot.is_deleted == 0).first()
+    lot = (
+        db.query(ParkingLot)
+        .filter(ParkingLot.id == body.parking_lot_id, ParkingLot.is_deleted == 0)
+        .with_for_update()
+        .first()
+    )
     if lot is None:
         raise BizError(*E_NOT_FOUND)
     record = (
@@ -219,7 +238,7 @@ def parking_exit(
     )
     if record is None:
         raise BizError(*E_PARKING_NO_RECORD)
-    rule = db.get(FeeRule, lot.fee_rule_id) if lot.fee_rule_id else None
+    rule = db.query(FeeRule).filter(FeeRule.id == lot.fee_rule_id, FeeRule.is_deleted == 0).first() if lot.fee_rule_id else None
     exit_time = datetime.now()
     fee = 0.0
     if rule:
@@ -265,13 +284,13 @@ def list_records(
     if status:
         query = query.filter(ParkingRecord.status == status)
     if enter_start:
-        query = query.filter(ParkingRecord.enter_time >= enter_start)
+        query = query.filter(ParkingRecord.enter_time >= to_local_naive(enter_start))
     if enter_end:
         # DATETIME 秒级四舍五入竞态：上界预留 1 秒缓冲
-        query = query.filter(ParkingRecord.enter_time <= enter_end + timedelta(seconds=1))
+        query = query.filter(ParkingRecord.enter_time <= to_local_naive(enter_end) + timedelta(seconds=1))
     total = query.count()
     rows = query.order_by(ParkingRecord.id.desc()).offset((page - 1) * size).limit(size).all()
-    lots = {lot.id: lot.name for lot in db.query(ParkingLot).all()}
+    lots = {lot.id: lot.name for lot in db.query(ParkingLot).filter(ParkingLot.is_deleted == 0).all()}
     return ok(
         {
             "list": [

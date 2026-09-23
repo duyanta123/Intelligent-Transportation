@@ -16,6 +16,9 @@
             <img v-if="captcha.image" :src="captcha.image" class="captcha-img" title="点击刷新验证码" alt="验证码" @click="refreshCaptcha" />
           </div>
         </el-form-item>
+        <el-form-item>
+          <el-checkbox v-model="remember" class="remember-row">记住用户名</el-checkbox>
+        </el-form-item>
         <el-button type="primary" class="login-btn" size="large" :loading="loading" @click="submit">登 录</el-button>
         <el-button class="login-btn" size="large" @click="registerVisible = true">注册账号</el-button>
       </el-form>

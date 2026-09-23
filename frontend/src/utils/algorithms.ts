@@ -33,6 +33,10 @@ export function websterCalc(phases: WebsterPhaseInput[]): WebsterResult {
   })
   const ySum = yList.reduce((a, b) => a + b, 0)
   const totalLost = phases.length * LOSS_PER_PHASE
+  // 与后端一致：各相位压到最短绿灯仍超出最大周期时判定为不可行输入
+  if (totalLost + MIN_GREEN * phases.length > CYCLE_MAX) {
+    throw new Error('相位过多：各相位最短绿灯（15s）与损失时间之和已超出最大周期 180s，请合并或减少相位')
+  }
   const oversaturated = ySum >= 0.95
   let cycle: number
   if (oversaturated) {

@@ -45,6 +45,10 @@ def webster_calc(phases: list[dict]) -> dict:
 
     y_sum = sum(y_list)
     total_lost = len(phases) * LOSS_PER_PHASE
+    # 不可行输入：各相位压到最短绿灯仍超出最大周期（如 12 个低流量相位），
+    # 静默输出超限周期会违背 [40,180] 钳制约定，直接报错交由上层提示
+    if total_lost + MIN_GREEN * len(phases) > CYCLE_MAX:
+        raise ValueError("相位过多：各相位最短绿灯（15s）与损失时间之和已超出最大周期 180s，请合并或减少相位")
     oversaturated = y_sum >= 0.95
     if oversaturated:
         cycle = float(CYCLE_MAX)  # 过饱和按上限周期处理

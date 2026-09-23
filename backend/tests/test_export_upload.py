@@ -118,3 +118,26 @@ class TestFlowRetention:
     def test_cleanup_disabled_when_zero(self, client, db_session, monkeypatch):
         monkeypatch.setattr(settings, "FLOW_RETENTION_DAYS", 0)
         assert cleanup_flow_data(db=db_session) == 0
+
+
+class TestUploadContentValidation:
+    def test_fake_image_rejected(self, client, officer_headers):
+        """改后缀伪装：jpg 扩展名 + HTML 内容必须被 magic bytes 校验拦截"""
+        resp = client.post(
+            "/api/v1/upload/image",
+            headers=officer_headers,
+            files={"file": ("fake.jpg", b"<html>definitely not an image</html>", "image/jpeg")},
+        )
+        assert resp.json()["code"] == 90002
+
+
+class TestExcelFormulaSanitize:
+    def test_formula_injection_neutralized(self):
+        """导出内容含用户可控文本时，= 开头的字符串不得被 openpyxl 当公式写入"""
+        from app.services.excel_service import build_xlsx
+
+        content = build_xlsx("测试", ["备注"], [["=cmd|'/c calc'!A1"], ["正常文本"]])
+        wb = load_workbook(io.BytesIO(content))
+        ws = wb.active
+        assert str(ws.cell(row=3, column=1).value).startswith("'")
+        assert ws.cell(row=4, column=1).value == "正常文本"

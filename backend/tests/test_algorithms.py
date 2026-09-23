@@ -155,3 +155,15 @@ class TestHourFlow:
         v = hour_flow_rate(10.0, 1.0, 1, rand_value=1.0)
         assert isinstance(v, float)
         assert not math.isnan(v)
+
+
+class TestWebsterInfeasible:
+    def test_too_many_low_flow_phases_raises(self):
+        """12 个低流量相位：最短绿灯之和 15*12+72=252s 已超出最大周期，必须报错而非输出超限周期"""
+        phases = [{"name": f"P{i}", "flow": 100, "lanes": 1} for i in range(12)]
+        with pytest.raises(ValueError, match="相位过多"):
+            webster_calc(phases)
+
+    def test_normal_phase_count_still_ok(self):
+        result = webster_calc([{"name": f"P{i}", "flow": 300, "lanes": 1} for i in range(8)])
+        assert result["cycle_seconds"] <= 180

@@ -11,6 +11,7 @@ from app.core.redis_client import (
     KEY_CAPTCHA,
     KEY_LOGIN_FAIL,
     KEY_LOGIN_LOCK,
+    KEY_PWD_FLOOR,
     KEY_TOKEN_BLACKLIST,
     get_redis,
 )
@@ -58,17 +59,23 @@ def _record_login_fail(redis, username: str, ip: str) -> None:
     for name in (username, f"ip:{ip}"):
         fail_key = KEY_LOGIN_FAIL.format(name=name)
         count = redis.incr(fail_key)
-        if count == 1:
-            redis.expire(fail_key, LOCK_SECONDS)
+        # 无条件续 TTL：仅 count==1 时设置存在竞态窗口（incr 后进程异常退出则键永存）
+        redis.expire(fail_key, LOCK_SECONDS)
         if count >= FAIL_LIMIT:
             redis.setex(KEY_LOGIN_LOCK.format(name=name), LOCK_SECONDS, "1")
             redis.delete(fail_key)
             raise BizError(*E_LOGIN_LOCKED)
 
 
+# 验证码"取出即销毁"的原子脚本（Redis 5 无 GETDEL，用 Lua 保证取值与删除一次性完成，
+# 避免并发请求携带同一 captcha_key 时的重放竞态）
+_CAPTCHA_CONSUME_LUA = "local v=redis.call('GET',KEYS[1]) if v then redis.call('DEL',KEYS[1]) end return v"
+
+
 @router.post("/register")
 def register(body: RegisterIn, request: Request, db: Session = Depends(get_db)):
-    exists = db.query(User).filter(User.username == body.username, User.is_deleted == 0).first()
+    # 查重不排除软删除用户：username 列有唯一索引，排除已删用户会让重名注册撞库报 500
+    exists = db.query(User).filter(User.username == body.username).first()
     if exists:
         raise BizError(*E_USER_EXISTS)
     user = User(
@@ -98,10 +105,9 @@ def login(body: LoginIn, request: Request, db: Session = Depends(get_db)):
     ip = request.client.host if request.client else ""
     _check_login_lock(redis, body.username, ip)
 
-    # 1. 校验图形验证码（一次性：校验后立即删除）
+    # 1. 校验图形验证码（一次性：原子取出并销毁，防并发重放）
     captcha_key = KEY_CAPTCHA.format(key=body.captcha_key)
-    stored = redis.get(captcha_key)
-    redis.delete(captcha_key)
+    stored = redis.eval(_CAPTCHA_CONSUME_LUA, 1, captcha_key)
     if not stored or stored.upper() != body.captcha_code.strip().upper():
         raise BizError(*E_CAPTCHA_WRONG)
 
@@ -166,6 +172,14 @@ def change_password(
     if not verify_password(body.old_password, current_user.password_hash):
         raise BizError(*E_OLD_PASSWORD)
     current_user.password_hash = hash_password(body.new_password)
+    # 改密吊销：记录改密时间下限，早于该时间签发的 token 一律失效
+    # （TTL 覆盖 token 最长寿命，过后自然过期，无需手动清理）
+    redis = get_redis()
+    redis.setex(
+        KEY_PWD_FLOOR.format(user_id=current_user.id),
+        settings.JWT_EXPIRE_MINUTES * 60 + 60,
+        str(int(time.time())),
+    )
     log_op(db, request, current_user, "改密", f"用户 {current_user.username} 修改了登录密码")
     db.commit()
     return ok(None, "密码修改成功，请重新登录")

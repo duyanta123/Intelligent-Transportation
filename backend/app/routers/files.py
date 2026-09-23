@@ -12,7 +12,7 @@ router = APIRouter(prefix="/upload", tags=["通用上传"])
 
 
 @router.post("/image")
-async def upload_image(
+def upload_image(
     request: Request,
     file: UploadFile = File(...),
     current_user: User = Depends(require_roles("admin", "officer")),

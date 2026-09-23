@@ -115,3 +115,20 @@ class TestViolation:
             json={"plate_no": _plate(), "violation_type": "超速", "violation_time": datetime.now().isoformat()},
         )
         assert resp.status_code == 403
+
+
+class TestVehiclePlateReuse:
+    def test_delete_then_re_register_same_plate(self, client, admin_headers, officer_headers):
+        """P0 回归：车牌有唯一索引，软删除后若不处理，同车牌重新登记会撞唯一键报 500"""
+        plate = _plate()
+        vid = client.post("/api/v1/vehicles", headers=officer_headers, json={"plate_no": plate}).json()["data"]["id"]
+        assert client.delete(f"/api/v1/vehicles/{vid}", headers=admin_headers).json()["code"] == 0
+        resp = client.post("/api/v1/vehicles", headers=officer_headers, json={"plate_no": plate})
+        assert resp.json()["code"] == 0, resp.json()
+
+    def test_duplicate_plate_returns_20005(self, client, officer_headers):
+        """车牌重复使用独立业务码 20005（20003 已被"违章已审核"占用，一码两用会误导前端分支）"""
+        plate = _plate()
+        client.post("/api/v1/vehicles", headers=officer_headers, json={"plate_no": plate})
+        resp = client.post("/api/v1/vehicles", headers=officer_headers, json={"plate_no": plate})
+        assert resp.json()["code"] == 20005

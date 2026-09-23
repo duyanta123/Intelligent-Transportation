@@ -19,7 +19,7 @@
           value-format="YYYY-MM-DDTHH:mm:ss"
           style="width: 340px"
         />
-        <el-button type="primary" :icon="Search" @click="load">查询</el-button>
+        <el-button type="primary" :icon="Search" @click="search">查询</el-button>
         <span class="spacer" />
         <el-button type="success" :icon="Upload" @click="enterVisible = true">车辆入场</el-button>
         <el-button type="info" plain :icon="Download" @click="doExport">导出 Excel</el-button>
@@ -73,7 +73,7 @@
       </el-form>
       <template #footer>
         <el-button @click="enterVisible = false">取消</el-button>
-        <el-button type="primary" @click="doEnter">入场登记</el-button>
+        <el-button type="primary" :loading="entering" @click="doEnter">入场登记</el-button>
       </template>
     </el-dialog>
 
@@ -91,7 +91,7 @@
       </el-form>
       <template #footer>
         <el-button @click="exitVisible = false">取消</el-button>
-        <el-button type="primary" @click="doExit">出场结算</el-button>
+        <el-button type="primary" :loading="exiting" @click="doExit">出场结算</el-button>
       </template>
     </el-dialog>
   </div>
@@ -102,6 +102,8 @@ import { onMounted, reactive, ref } from 'vue'
 import { Search, Upload, Download } from '@element-plus/icons-vue'
 import { downloadFile } from '@/api/download'
 import { ElMessage } from 'element-plus'
+import { todayLocalDate } from '@/utils/datetime'
+import { sequenceGuard } from '@/utils/async'
 import { fetchParkingLots, parkingEnter, parkingExit, fetchParkingRecords } from '@/api/parking'
 import type { ParkingLot } from '@/api/parking'
 
@@ -111,6 +113,9 @@ const total = ref(0)
 const page = ref(1)
 const size = ref(10)
 const loading = ref(false)
+const entering = ref(false)
+const exiting = ref(false)
+const listSeq = sequenceGuard()
 const query = reactive({ parking_lot_id: undefined as number | undefined, status: '', plate_no: '' })
 const enterRange = ref<[string, string] | null>(null)
 
@@ -119,16 +124,20 @@ const exitVisible = ref(false)
 const enterForm = reactive({ parking_lot_id: 0, plate_no: '', file: null as File | null })
 const exitForm = reactive({ parking_lot_id: 0, plate_no: '' })
 
+// 车牌格式：与后端正则一致（省份简称 + 字母 + 4~6 位序号，支持新能源 8 位）
+const platePattern = /^[京津沪渝冀晋辽吉黑苏浙皖闽赣鲁豫鄂湘粤桂琼川贵云陕甘青蒙藏宁新][A-HJ-NP-Z][A-HJ-NP-Z0-9]{4,6}$/
+
 function onFileChange(e: Event) {
   const files = (e.target as HTMLInputElement).files
   enterForm.file = files && files.length > 0 ? files[0] : null
 }
 
 function doExport() {
-  downloadFile('/export/parking-records.xlsx', { days: 30 }, `出入场记录_${new Date().toISOString().slice(0, 10).replaceAll('-', '')}.xlsx`)
+  downloadFile('/export/parking-records.xlsx', { days: 30 }, `出入场记录_${todayLocalDate().replaceAll('-', '')}.xlsx`)
 }
 
 async function load() {
+  const seq = listSeq.begin()
   loading.value = true
   try {
     const params: Record<string, unknown> = { page: page.value, size: size.value }
@@ -140,11 +149,19 @@ async function load() {
       params.enter_end = enterRange.value[1]
     }
     const { data } = await fetchParkingRecords(params)
-    rows.value = data.list as never
-    total.value = data.total
+    if (listSeq.isCurrent(seq)) {
+      rows.value = data.list as never
+      total.value = data.total
+    }
   } finally {
-    loading.value = false
+    if (listSeq.isCurrent(seq)) loading.value = false
   }
+}
+
+/** 条件查询：重置到第 1 页，避免停在深层页码查不到数据 */
+function search() {
+  page.value = 1
+  load()
 }
 
 async function doEnter() {
@@ -152,14 +169,25 @@ async function doEnter() {
     ElMessage.warning('请选择停车场并输入车牌号')
     return
   }
+  const plate = enterForm.plate_no.trim().toUpperCase()
+  if (!platePattern.test(plate)) {
+    ElMessage.warning('车牌号格式不正确')
+    return
+  }
   const fd = new FormData()
   fd.append('parking_lot_id', String(enterForm.parking_lot_id))
-  fd.append('plate_no', enterForm.plate_no.trim().toUpperCase())
+  fd.append('plate_no', plate)
   if (enterForm.file) fd.append('file', enterForm.file)
-  const { data } = await parkingEnter(fd)
-  ElMessage.success(`入场成功：${data.plate_no} @ ${data.enter_time}`)
-  enterVisible.value = false
-  await load()
+  entering.value = true
+  try {
+    // :loading 防重复提交；后端另有行锁兜底同车牌重复入场
+    const { data } = await parkingEnter(fd)
+    ElMessage.success(`入场成功：${data.plate_no} @ ${data.enter_time}`)
+    enterVisible.value = false
+    await load()
+  } finally {
+    entering.value = false
+  }
 }
 
 async function doExit() {
@@ -167,10 +195,20 @@ async function doExit() {
     ElMessage.warning('请选择停车场并输入车牌号')
     return
   }
-  const { data } = await parkingExit({ parking_lot_id: exitForm.parking_lot_id, plate_no: exitForm.plate_no.trim().toUpperCase() })
-  ElMessage.success(`出场成功，结算费用 ${data.fee} 元`)
-  exitVisible.value = false
-  await load()
+  const plate = exitForm.plate_no.trim().toUpperCase()
+  if (!platePattern.test(plate)) {
+    ElMessage.warning('车牌号格式不正确')
+    return
+  }
+  exiting.value = true
+  try {
+    const { data } = await parkingExit({ parking_lot_id: exitForm.parking_lot_id, plate_no: plate })
+    ElMessage.success(`出场成功，结算费用 ${data.fee} 元`)
+    exitVisible.value = false
+    await load()
+  } finally {
+    exiting.value = false
+  }
 }
 
 onMounted(async () => {
