@@ -59,6 +59,8 @@ if [ "$MODE" = "protect" ]; then
     fail "未找到 gh 命令：先安装 GitHub CLI 并执行 gh auth login"
   fi
   [ -f scripts/remote-branch-protection.json ] || fail "缺少 scripts/remote-branch-protection.json"
+  echo "[提示] 分支保护现已改用 GitHub 规则集（Rulesets）配置并生效，本模式仅作存档备用；"
+  echo "       无意叠加 classic 保护时不要再执行（详见 docs/分工/06 第 5.3 节）。"
   echo "开启 $TARGET 分支保护（Require PR 1 人评审 + 必选检查「CI 全部通过」「密钥泄露扫描」）……"
   gh api -X PUT "repos/$REPO/branches/$TARGET/protection" \
     --input scripts/remote-branch-protection.json

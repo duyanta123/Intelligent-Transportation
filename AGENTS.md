@@ -17,10 +17,11 @@ smart-traffic/
 ├── backend/            # FastAPI 后端（app/main.py 为入口，app/routers|services|models 分层）
 │   └── uploads/        # 上传图片（入场拍照/车牌识别），以 /static/uploads 静态回显，不入库
 ├── frontend/           # Vue3 + Vite + TS 前端（src/views|api|stores|components）
-├── docs/               # 课程文档：01需求 02设计 03数据库 04测试报告 05部署手册；另含 PROGRESS.md 进度台账
+├── docs/               # 课程文档：01需求 02设计 03数据库 04测试报告 05部署手册 + demo.md 答辩动线；另含 PROGRESS.md 进度台账
 ├── sql/                # init.sql（建库建表）+ seed.sql（种子数据）
 ├── .github/            # CI 门禁/安全扫描/PR 模板/CODEOWNERS（详见 docs/分工/06-自动化检查与CI门禁.md）
 ├── scripts/            # 工具脚本：ci_check.py（仓库自检）、precheck.py（一键自检）、gen_seed.py
+├── logs/               # 运行日志（手动重定向输出时才生成，不入库，可整目录删除）
 ├── .env.example        # 配置模板（键名固定，以《智慧交通-项目开发Prompt.md》附录 E 为准；真实 .env 不入库）
 ├── .gitignore          # 忽略 .env / venv / node_modules / dist / uploads / logs / 模型缓存等
 ├── start.bat / stop.bat# 一键启停脚本
