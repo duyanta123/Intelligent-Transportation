@@ -78,7 +78,7 @@ npm run dev                   # http://localhost:5173
 | officer | 交警运营（配时/录入/审核/停车/反馈处理） |
 | user | 普通用户（大屏/路况/本人车辆违章/反馈） |
 
-> Windows 一键启停：`start.bat` / `stop.bat`；答辩前还原演示数据：`reset-db.bat`。演示动线见 [demo.md](demo.md)。
+> Windows 一键启停：`start.bat` / `stop.bat`；答辩前还原演示数据：`reset-db.bat`。演示动线见 [docs/demo.md](docs/demo.md)。
 
 ## 目录结构
 
@@ -87,11 +87,11 @@ smart-traffic/
 ├── backend/          # FastAPI 后端（app/routers|services|models 三层 + tasks + tests）
 │   └── uploads/      # 入场拍照（/static/uploads 回显，不入库）
 ├── frontend/         # Vue3 前端（src/views|api|stores + vitest）
-├── docs/             # 课程文档 01-05 + 分工文档（00-05）+ PROGRESS.md 进度台账
+├── docs/             # 课程文档 01-05 + 分工文档（00-05）+ PROGRESS.md + demo.md 答辩演示动线
 ├── sql/              # init.sql 建表 + seed.sql 种子数据
 ├── scripts/          # gen_seed.py 种子生成脚本（可刷新日期重新生成）
 ├── start.bat / stop.bat / reset-db.bat
-└── demo.md           # 答辩演示动线
+└── AGENTS.md         # AI 编程助手工作须知
 ```
 
 ## 质量保障

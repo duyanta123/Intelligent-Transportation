@@ -10,7 +10,6 @@ paths = [
   '''\.env\.example$''',
   '''^docs/''',
   '''^README\.md$''',
-  '''^demo\.md$''',
 ]
 # CI 工作流里的临时 MySQL/JWT 凭据：只在一次性 runner 内使用，不是真实密钥
 regexes = [
