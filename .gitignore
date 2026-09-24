@@ -1,0 +1,30 @@
+# 环境与密钥
+.env
+backend/.env
+frontend/.env
+!.env.example
+
+# Python
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+*.local
+
+# 上传与日志
+backend/uploads/*
+!backend/uploads/.gitkeep
+logs/
+
+# 模型缓存（HyperLPR3 首次运行自动下载）
+*.onnx
+.hyperlpr3/
+
+# IDE
+.idea/
+.vscode/
