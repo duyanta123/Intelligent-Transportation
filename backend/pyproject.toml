@@ -1,0 +1,25 @@
+# -*- coding: utf-8 -*-
+[tool.ruff]
+line-length = 140  # 注释/文案大量使用中文（全角字符占两列），适当放宽
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "BLE", "DTZ", "RUF"]
+# B008：FastAPI 的 Depends()/Query() 等必须写在参数默认值中，属框架惯例，豁免
+# DTZ：项目约定全链路使用 Asia/Shanghai 本地时间（naive datetime），禁止 UTC 转换，豁免时区告警
+# RUF001-003：注释与文案规范要求使用简体中文（全角标点），豁免
+ignore = ["B008", "DTZ", "RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+# LPR/验证码等第三方组件加载失败需要盲目兜底降级
+"app/services/lpr_service.py" = ["BLE001"]
+# 密码校验对损坏哈希兜底返回 False
+"app/core/security.py" = ["BLE001"]
+# 路由先注册异常处理器、后引入路由模块（避免循环导入），属有意安排
+"app/main.py" = ["BLE001", "E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+# 让裸 pytest 也能导入 app 包（CI 与本地统一用 python -m pytest，此处为兜底）
+pythonpath = ["."]
